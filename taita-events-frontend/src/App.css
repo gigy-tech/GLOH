@@ -1,0 +1,176 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #0f766e, #115e59);
+  color: white;
+  text-align: center;
+  padding: 35px 20px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.header p {
+  margin: 8px 0 0;
+  font-size: 17px;
+}
+
+/* Navigation */
+.navigation {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  background: white;
+  padding: 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.navigation button {
+  border: none;
+  background: #0f766e;
+  color: white;
+  padding: 12px 22px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.navigation button:hover {
+  background: #115e59;
+}
+
+/* Main content */
+.content {
+  max-width: 1100px;
+  margin: 35px auto;
+  padding: 0 20px;
+}
+
+.content h2 {
+  font-size: 28px;
+  margin-bottom: 25px;
+}
+
+/* Dashboard cards */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.card {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.card h3 {
+  margin-top: 0;
+  color: #475569;
+}
+
+.card p {
+  font-size: 30px;
+  font-weight: bold;
+  color: #0f766e;
+}
+
+/* Events */
+.event {
+  background: white;
+  margin-bottom: 20px;
+  padding: 22px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.event h3 {
+  color: #0f766e;
+  margin-top: 0;
+}
+
+/* Buttons */
+.create-button {
+  background: #0f766e;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 25px;
+}
+
+.create-button:hover {
+  background: #115e59;
+}
+
+/* Form */
+form {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+form label {
+  display: block;
+  margin-bottom: 7px;
+  font-weight: bold;
+}
+
+form input,
+form textarea {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 18px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 15px;
+}
+
+form textarea {
+  min-height: 100px;
+}
+
+form button {
+  margin-right: 10px;
+}
+
+/* Mobile */
+@media (max-width: 800px) {
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation {
+    flex-direction: column;
+  }
+
+  .navigation button {
+    width: 100%;
+  }
+}
