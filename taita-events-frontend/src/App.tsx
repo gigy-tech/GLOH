@@ -36,8 +36,7 @@ type Attendance = {
   status: 'present' | 'absent'
   meeting?: Meeting
 }
-
-const API_URL = 'http://127.0.0.1:8000/api'
+const API_URL = 'https://employee-management-api-zisi.onrender.com/api'
 
 function App() {
   const [page, setPage] = useState<Page>('dashboard')
