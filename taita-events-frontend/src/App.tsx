@@ -10,6 +10,7 @@ type Page =
   | 'attendance'
   | 'notifications'
   | 'reports'
+  | 'account'
 
 type Event = {
   id?: number
@@ -41,46 +42,111 @@ type User = {
   id: number
   name: string
   email: string
-  role: 'admin' | 'user'
+  role:
+    | 'super_admin'
+    | 'admin'
+    | 'ict_admin'
+    | 'meeting_admin'
+    | 'department_admin'
+    | 'organiser'
+    | 'manager'
+    | 'hr'
+    | 'senior_management'
+    | 'auditor'
+    | 'employee'
+    | 'user'
+  department?: string
+  position?: string
+  permissions?: string[]
 }
 
 const API_URL = 'http://127.0.0.1:8000/api'
 
 function App() {
   const [user, setUser] = useState<User | null>(() => {
-    const savedUser = localStorage.getItem('county_user')
-
-    if (!savedUser) {
-      return null
-    }
-
-    try {
-      return JSON.parse(savedUser)
-    } catch {
-      return null
-    }
+    const saved = localStorage.getItem('county_user')
+    return saved ? JSON.parse(saved) : null
   })
 
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem('county_token'),
   )
 
+  // ============================================================
+  // NORMAL LOGIN
+  // ============================================================
+
   const [loginForm, setLoginForm] = useState({
     email: '',
     password: '',
   })
+
+  // ============================================================
+  // EXISTING EMPLOYEE VERIFICATION
+  // ============================================================
+
+  const [otp, setOtp] = useState('')
+  const [employeeId, setEmployeeId] = useState<number | null>(null)
+  const [otpSent, setOtpSent] = useState(false)
+  const [showEmployeeVerification, setShowEmployeeVerification] =
+    useState(false)
+
+  const [passwordSetup, setPasswordSetup] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
+
+  // ============================================================
+  // NEW EMPLOYEE SELF-REGISTRATION
+  // ============================================================
+
+  const [showRegistration, setShowRegistration] = useState(false)
+
+  const [registerForm, setRegisterForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    department: '',
+    position: '',
+  })
+
+  const [registrationId, setRegistrationId] = useState<number | null>(
+    null,
+  )
+
+  const [registrationOtp, setRegistrationOtp] = useState('')
+
+  const [registrationStep, setRegistrationStep] = useState<
+    'form' | 'otp' | 'password'
+  >('form')
+
+  const [registrationPassword, setRegistrationPassword] = useState('')
+  const [registrationConfirmPassword, setRegistrationConfirmPassword] =
+    useState('')
+
+  const [registrationError, setRegistrationError] = useState('')
+  const [registrationLoading, setRegistrationLoading] = useState(false)
+
+  // ============================================================
+  // GENERAL
+  // ============================================================
 
   const [loginLoading, setLoginLoading] = useState(false)
   const [loginError, setLoginError] = useState('')
 
   const [page, setPage] = useState<Page>('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
 
   const [events, setEvents] = useState<Event[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [attendance, setAttendance] = useState<Attendance[]>([])
-
   const [loading, setLoading] = useState(false)
+
+  // ============================================================
+  // EVENT FORM
+  // ============================================================
 
   const [eventForm, setEventForm] = useState({
     name: '',
@@ -90,6 +156,10 @@ function App() {
     description: '',
   })
 
+  // ============================================================
+  // MEETING FORM
+  // ============================================================
+
   const [meetingForm, setMeetingForm] = useState({
     title: '',
     date: '',
@@ -98,149 +168,986 @@ function App() {
     description: '',
   })
 
+  // ============================================================
+  // ATTENDANCE FORM
+  // ============================================================
+
   const [attendanceForm, setAttendanceForm] = useState({
     meeting_id: '',
     attendee_name: '',
-    status: 'present',
+    status: 'present' as 'present' | 'absent',
   })
 
-  const isAdmin = user?.role === 'admin'
+  // ============================================================
+  // ROLE PERMISSIONS
+  // ============================================================
 
-  // ==========================================
-  // AUTHENTICATION
-  // ==========================================
+  const rolePermissions: Record<string, string[]> = {
+    super_admin: [
+      'meetings.create',
+      'meetings.update',
+      'meetings.publish',
+      'meetings.cancel',
+      'participants.manage',
+      'attendance.capture',
+      'attendance.verify',
+      'attendance.correct',
+      'reports.view',
+      'reports.export',
+      'analytics.view',
+      'users.manage',
+      'roles.manage',
+      'audit.view',
+    ],
 
-  const login = async (e: FormEvent) =>{
+    admin: [
+      'meetings.create',
+      'meetings.update',
+      'meetings.publish',
+      'meetings.cancel',
+      'participants.manage',
+      'attendance.capture',
+      'attendance.verify',
+      'attendance.correct',
+      'reports.view',
+      'reports.export',
+      'analytics.view',
+      'users.manage',
+      'roles.manage',
+      'audit.view',
+    ],
+
+    ict_admin: [
+      'users.manage',
+      'roles.manage',
+      'audit.view',
+      'reports.view',
+      'analytics.view',
+    ],
+
+    meeting_admin: [
+      'meetings.create',
+      'meetings.update',
+      'meetings.publish',
+      'meetings.cancel',
+      'participants.manage',
+      'attendance.capture',
+      'attendance.verify',
+      'attendance.correct',
+      'reports.view',
+      'reports.export',
+    ],
+
+    department_admin: [
+      'meetings.create',
+      'meetings.update',
+      'participants.manage',
+      'attendance.capture',
+      'attendance.verify',
+      'attendance.correct',
+      'reports.view',
+      'reports.export',
+    ],
+
+    organiser: [
+      'meetings.create',
+      'meetings.update',
+      'participants.manage',
+      'attendance.capture',
+      'attendance.verify',
+      'reports.view',
+    ],
+
+    manager: [
+      'reports.view',
+      'analytics.view',
+    ],
+
+    hr: [
+      'reports.view',
+      'reports.export',
+    ],
+
+    senior_management: [
+      'reports.view',
+      'reports.export',
+      'analytics.view',
+    ],
+
+    auditor: [
+      'reports.view',
+      'audit.view',
+    ],
+
+    employee: [
+      'reports.view',
+    ],
+
+    user: [
+      'reports.view',
+    ],
+  }
+
+  const can = (permission: string) => {
+    if (!user) return false
+
+    return (
+      user.permissions ??
+      rolePermissions[user.role] ??
+      []
+    ).includes(permission)
+  }
+
+  const canManageMeetings =
+    can('meetings.create') || can('meetings.update')
+
+  // ============================================================
+  // AUTH HEADERS
+  // ============================================================
+
+  const authHeaders = (): HeadersInit => ({
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    ...(token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {}),
+  })
+
+  // ============================================================
+  // SAVE AUTHENTICATION
+  // ============================================================
+
+  const saveAuthentication = (
+    newToken: string,
+    newUser: User,
+  ) => {
+    localStorage.setItem('county_token', newToken)
+    localStorage.setItem(
+      'county_user',
+      JSON.stringify(newUser),
+    )
+
+    setToken(newToken)
+    setUser(newUser)
+  }
+
+  // ============================================================
+  // NORMAL LOGIN
+  // ============================================================
+
+  const login = async (e: FormEvent) => {
     e.preventDefault()
 
+    if (!loginForm.email.trim() || !loginForm.password) {
+      setLoginError(
+        'Enter your email and password.',
+      )
+      return
+    }
+
     setLoginLoading(true)
     setLoginError('')
-    
 
     try {
-      const response = await fetch(`${API_URL}/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
+      const response = await fetch(
+        `${API_URL}/login`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: loginForm.email.trim(),
+            password: loginForm.password,
+          }),
         },
-        body: JSON.stringify(loginForm),
-      })
+      )
 
-      const data = await response.json()
+      const text = await response.text()
+
+      console.log(
+        'Raw Laravel login response:',
+        text,
+      )
+
+      const cleanText = text
+        .trim()
+        .replace(/^`+|`+$/g, '')
+
+      const data = JSON.parse(cleanText)
 
       if (!response.ok) {
-        setLoginError(data.message || 'Invalid email or password.')
-        return
+        throw new Error(
+          data.message ||
+            'Invalid email or password.',
+        )
       }
 
-      localStorage.setItem('county_token', data.token)
-      localStorage.setItem('county_user', JSON.stringify(data.user))
+      if (!data.token || !data.user) {
+        throw new Error(
+          'Login response is missing authentication details.',
+        )
+      }
 
-      setToken(data.token)
-      setUser(data.user)
+      saveAuthentication(
+        data.token,
+        data.user,
+      )
 
       setLoginForm({
         email: '',
         password: '',
       })
+
+      setLoginError('')
+      setPage('dashboard')
     } catch (error) {
-      console.error(error)
+      console.error(
+        'Login error:',
+        error,
+      )
+
       setLoginError(
-        'Unable to connect to the server. Please try again.',
+        error instanceof Error
+          ? error.message
+          : 'Unable to sign in.',
       )
     } finally {
       setLoginLoading(false)
     }
   }
 
-  const continueAsUser = async () => {
+  // ============================================================
+  // EXISTING EMPLOYEE - SEND OTP
+  // ============================================================
+
+  const sendEmployeeOtp = async () => {
+    if (!loginForm.email.trim()) {
+      setLoginError(
+        'Enter your government email first.',
+      )
+      return
+    }
+
     setLoginLoading(true)
     setLoginError('')
 
     try {
-      const response = await fetch(`${API_URL}/guest-login`, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
+      const response = await fetch(
+        `${API_URL}/verify-employee-email`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: loginForm.email.trim(),
+          }),
         },
-      })
+      )
 
-      const data = await response.json()
+      const text = await response.text()
+
+      console.log(
+        'Raw Laravel response:',
+        text,
+      )
+
+      const cleanText = text
+        .trim()
+        .replace(/^`+|`+$/g, '')
+
+      const data = JSON.parse(cleanText)
+
+      console.log(
+        'Laravel response:',
+        data,
+      )
 
       if (!response.ok) {
-        setLoginError(data.message || 'Unable to continue as user.')
-        return
+        throw new Error(
+          data.message ||
+            'Failed to send OTP.',
+        )
       }
 
-      localStorage.setItem('county_token', data.token)
-      localStorage.setItem('county_user', JSON.stringify(data.user))
+      setEmployeeId(
+        data.employee_id,
+      )
 
-      setToken(data.token)
-      setUser(data.user)
+      setOtpSent(true)
+      setLoginError('')
 
-      setLoginForm({
-        email: '',
-        password: '',
-      })
+      console.log(
+        'OTP sent successfully. Employee ID:',
+        data.employee_id,
+      )
     } catch (error) {
-      console.error(error)
+      console.error(
+        'OTP error:',
+        error,
+      )
+
       setLoginError(
-        'Unable to connect to the server. Please try again.',
+        error instanceof Error
+          ? error.message
+          : 'Failed to send OTP.',
       )
     } finally {
       setLoginLoading(false)
     }
   }
+
+  // ============================================================
+  // EXISTING EMPLOYEE - VERIFY OTP
+  // ============================================================
+
+  const verifyEmployeeOtp = async (
+    e: FormEvent,
+  ) => {
+    e.preventDefault()
+
+    if (!employeeId) {
+      setLoginError(
+        'Please request an OTP first.',
+      )
+      return
+    }
+
+    if (otp.length !== 6) {
+      setLoginError(
+        'Enter the 6-digit OTP.',
+      )
+      return
+    }
+
+    setLoginLoading(true)
+    setLoginError('')
+
+    try {
+      const response = await fetch(
+        `${API_URL}/verify-employee-otp`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            employee_id: employeeId,
+            otp,
+          }),
+        },
+      )
+
+      const text = await response.text()
+
+      console.log(
+        'Raw Laravel OTP response:',
+        text,
+      )
+
+      const cleanText = text
+        .trim()
+        .replace(/^`+|`+$/g, '')
+
+      const data = JSON.parse(cleanText)
+
+      console.log(
+        'Laravel OTP response:',
+        data,
+      )
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Invalid or expired OTP.',
+        )
+      }
+
+      console.log(
+        'OTP verified successfully.',
+      )
+
+      console.log(
+        'Password set:',
+        data.password_set,
+      )
+
+      if (data.password_set === false) {
+        setPasswordSetup(true)
+        setOtp('')
+        setLoginError('')
+        return
+      }
+
+      setOtp('')
+      setEmployeeId(null)
+      setOtpSent(false)
+      setPasswordSetup(false)
+      setShowEmployeeVerification(false)
+
+      setLoginForm((current) => ({
+        email: current.email,
+        password: '',
+      }))
+
+      setLoginError(
+        'Password already exists. Please sign in with your email and password.',
+      )
+    } catch (error) {
+      console.error(
+        'OTP verification error:',
+        error,
+      )
+
+      setLoginError(
+        error instanceof Error
+          ? error.message
+          : 'OTP verification failed.',
+      )
+    } finally {
+      setLoginLoading(false)
+    }
+  }
+
+  // ============================================================
+  // EXISTING EMPLOYEE - SET PASSWORD
+  // ============================================================
+
+  const setEmployeePassword = async (
+    e: FormEvent,
+  ) => {
+    e.preventDefault()
+
+    setPasswordError('')
+    setPasswordLoading(true)
+
+    if (newPassword.length < 8) {
+      setPasswordError(
+        'Password must be at least 8 characters.',
+      )
+
+      setPasswordLoading(false)
+      return
+    }
+
+    if (
+      newPassword !==
+      confirmPassword
+    ) {
+      setPasswordError(
+        'Passwords do not match.',
+      )
+
+      setPasswordLoading(false)
+      return
+    }
+
+    if (!employeeId) {
+      setPasswordError(
+        'Employee verification information is missing.',
+      )
+
+      setPasswordLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/set-password`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            employee_id: employeeId,
+            password: newPassword,
+            password_confirmation:
+              confirmPassword,
+          }),
+        },
+      )
+
+      const text = await response.text()
+
+      console.log(
+        'Raw password response:',
+        text,
+      )
+
+      const cleanText = text
+        .trim()
+        .replace(/^`+|`+$/g, '')
+
+      const data = JSON.parse(cleanText)
+
+      console.log(
+        'Password response:',
+        data,
+      )
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Unable to create password.',
+        )
+      }
+
+      setPasswordSetup(false)
+      setShowEmployeeVerification(false)
+      setNewPassword('')
+      setConfirmPassword('')
+      setOtp('')
+      setEmployeeId(null)
+      setOtpSent(false)
+
+      setLoginForm((current) => ({
+        email: current.email,
+        password: '',
+      }))
+
+      setLoginError('')
+      setPasswordError('')
+
+      alert(
+        'Password created successfully. You can now log in with your government email and password.',
+      )
+    } catch (error) {
+      console.error(
+        'Password creation error:',
+        error,
+      )
+
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to create password.',
+      )
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  // ============================================================
+  // NEW REGISTRATION - START
+  // ============================================================
+
+  const startRegistration = async (
+    e: FormEvent,
+  ) => {
+    e.preventDefault()
+
+    setRegistrationError('')
+
+    if (!registerForm.name.trim()) {
+      setRegistrationError(
+        'Enter your full name.',
+      )
+      return
+    }
+
+    if (!registerForm.email.trim()) {
+      setRegistrationError(
+        'Enter your email address.',
+      )
+      return
+    }
+
+    setRegistrationLoading(true)
+
+    try {
+      const response = await fetch(
+        `${API_URL}/register`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: registerForm.name.trim(),
+            email: registerForm.email.trim(),
+            phone: registerForm.phone.trim(),
+            department:
+              registerForm.department.trim(),
+            position:
+              registerForm.position.trim(),
+          }),
+        },
+      )
+
+      const text = await response.text()
+
+      console.log(
+        'Raw registration response:',
+        text,
+      )
+
+      const cleanText = text
+        .trim()
+        .replace(/^`+|`+$/g, '')
+
+      const data = JSON.parse(cleanText)
+
+      console.log(
+        'Registration response:',
+        data,
+      )
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Unable to start registration.',
+        )
+      }
+
+      if (!data.registration_id) {
+        throw new Error(
+          'Registration response is missing the registration ID.',
+        )
+      }
+
+      setRegistrationId(
+        data.registration_id,
+      )
+
+      setRegistrationStep('otp')
+      setRegistrationError('')
+
+      alert(
+        'Registration started. Check your email for the 6-digit verification OTP.',
+      )
+    } catch (error) {
+      console.error(
+        'Registration error:',
+        error,
+      )
+
+      setRegistrationError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to start registration.',
+      )
+    } finally {
+      setRegistrationLoading(false)
+    }
+  }
+
+  // ============================================================
+  // NEW REGISTRATION - VERIFY OTP
+  // ============================================================
+
+  const verifyRegistrationOtp = async (
+    e: FormEvent,
+  ) => {
+    e.preventDefault()
+
+    setRegistrationError('')
+
+    if (!registrationId) {
+      setRegistrationError(
+        'Registration information is missing. Please register again.',
+      )
+      return
+    }
+
+    if (registrationOtp.length !== 6) {
+      setRegistrationError(
+        'Enter the 6-digit OTP.',
+      )
+      return
+    }
+
+    setRegistrationLoading(true)
+
+    try {
+      const response = await fetch(
+        `${API_URL}/verify-registration-otp`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            registration_id:
+              registrationId,
+            otp: registrationOtp,
+          }),
+        },
+      )
+
+      const text = await response.text()
+
+      console.log(
+        'Raw registration OTP response:',
+        text,
+      )
+
+      const cleanText = text
+        .trim()
+        .replace(/^`+|`+$/g, '')
+
+      const data = JSON.parse(cleanText)
+
+      console.log(
+        'Registration OTP response:',
+        data,
+      )
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Invalid or expired OTP.',
+        )
+      }
+
+      setRegistrationStep('password')
+      setRegistrationOtp('')
+      setRegistrationError('')
+    } catch (error) {
+      console.error(
+        'Registration OTP error:',
+        error,
+      )
+
+      setRegistrationError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to verify the OTP.',
+      )
+    } finally {
+      setRegistrationLoading(false)
+    }
+  }
+
+  // ============================================================
+  // NEW REGISTRATION - COMPLETE
+  // ============================================================
+
+  const completeRegistration = async (
+    e: FormEvent,
+  ) => {
+    e.preventDefault()
+
+    setRegistrationError('')
+
+    if (!registrationId) {
+      setRegistrationError(
+        'Registration information is missing. Please register again.',
+      )
+      return
+    }
+
+    if (
+      registrationPassword.length < 8
+    ) {
+      setRegistrationError(
+        'Password must be at least 8 characters.',
+      )
+      return
+    }
+
+    if (
+      registrationPassword !==
+      registrationConfirmPassword
+    ) {
+      setRegistrationError(
+        'Passwords do not match.',
+      )
+      return
+    }
+
+    setRegistrationLoading(true)
+
+    try {
+      const response = await fetch(
+        `${API_URL}/complete-registration`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            registration_id:
+              registrationId,
+            password:
+              registrationPassword,
+            password_confirmation:
+              registrationConfirmPassword,
+          }),
+        },
+      )
+
+      const text = await response.text()
+
+      console.log(
+        'Raw complete registration response:',
+        text,
+      )
+
+      const cleanText = text
+        .trim()
+        .replace(/^`+|`+$/g, '')
+
+      const data = JSON.parse(cleanText)
+
+      console.log(
+        'Complete registration response:',
+        data,
+      )
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Unable to complete registration.',
+        )
+      }
+
+      if (!data.token || !data.user) {
+        throw new Error(
+          'Registration completed, but authentication details were not returned.',
+        )
+      }
+
+      saveAuthentication(
+        data.token,
+        data.user,
+      )
+
+      setRegisterForm({
+        name: '',
+        email: '',
+        phone: '',
+        department: '',
+        position: '',
+      })
+
+      setRegistrationId(null)
+      setRegistrationOtp('')
+      setRegistrationStep('form')
+      setRegistrationPassword('')
+      setRegistrationConfirmPassword('')
+      setRegistrationError('')
+      setShowRegistration(false)
+
+      setPage('dashboard')
+
+      alert(
+        'Registration completed successfully. Welcome to the Taita Taveta County Events & Meetings Management System.',
+      )
+    } catch (error) {
+      console.error(
+        'Complete registration error:',
+        error,
+      )
+
+      setRegistrationError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to complete registration.',
+      )
+    } finally {
+      setRegistrationLoading(false)
+    }
+  }
+
+  // ============================================================
+  // CANCEL REGISTRATION
+  // ============================================================
+
+  const cancelRegistration = () => {
+    setShowRegistration(false)
+
+    setRegisterForm({
+      name: '',
+      email: '',
+      phone: '',
+      department: '',
+      position: '',
+    })
+
+    setRegistrationId(null)
+    setRegistrationOtp('')
+    setRegistrationStep('form')
+    setRegistrationPassword('')
+    setRegistrationConfirmPassword('')
+    setRegistrationError('')
+  }
+
+  // ============================================================
+  // LOGOUT
+  // ============================================================
 
   const logout = async () => {
     try {
       if (token) {
-        await fetch(`${API_URL}/logout`, {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
+        await fetch(
+          `${API_URL}/logout`,
+          {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
           },
-        })
+        )
       }
-    } catch (error) {
-      console.error(error)
+    } catch {
+      // Local authentication is still cleared
+      // if the server is unavailable.
+    } finally {
+      localStorage.removeItem(
+        'county_token',
+      )
+
+      localStorage.removeItem(
+        'county_user',
+      )
+
+      setToken(null)
+      setUser(null)
+
+      setEvents([])
+      setMeetings([])
+      setAttendance([])
+
+      setPage('dashboard')
+      setMenuOpen(false)
+
+      setOtp('')
+      setEmployeeId(null)
+      setOtpSent(false)
+      setShowEmployeeVerification(false)
+      setPasswordSetup(false)
+
+      setNewPassword('')
+      setConfirmPassword('')
+
+      setShowRegistration(false)
+
+      setRegistrationId(null)
+      setRegistrationOtp('')
+      setRegistrationStep('form')
+      setRegistrationPassword('')
+      setRegistrationConfirmPassword('')
+
+      setLoginError('')
+      setRegistrationError('')
     }
-
-    localStorage.removeItem('county_token')
-    localStorage.removeItem('county_user')
-
-    setToken(null)
-    setUser(null)
-
-    setEvents([])
-    setMeetings([])
-    setAttendance([])
-
-    setPage('dashboard')
   }
 
-  // ==========================================
-  // AUTHENTICATED API HEADERS
-  // ==========================================
-
-  const authHeaders = () => {
-    return {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    }
-  }
-
-  // ==========================================
-  // LOAD DATA
-  // ==========================================
-
-  useEffect(() => {
-    if (token) {
-      loadData()
-    }
-  }, [token])
+  // ============================================================
+  // LOAD SYSTEM DATA
+  // ============================================================
 
   const loadData = async () => {
     if (!token) return
@@ -248,20 +1155,32 @@ function App() {
     setLoading(true)
 
     try {
-      const headers = authHeaders()
+      const [
+        eventsResponse,
+        meetingsResponse,
+        attendanceResponse,
+      ] = await Promise.all([
+        fetch(
+          `${API_URL}/events`,
+          {
+            headers: authHeaders(),
+          },
+        ),
 
-      const [eventsResponse, meetingsResponse, attendanceResponse] =
-        await Promise.all([
-          fetch(`${API_URL}/events`, {
-            headers,
-          }),
-          fetch(`${API_URL}/meetings`, {
-            headers,
-          }),
-          fetch(`${API_URL}/attendances`, {
-            headers,
-          }),
-        ])
+        fetch(
+          `${API_URL}/meetings`,
+          {
+            headers: authHeaders(),
+          },
+        ),
+
+        fetch(
+          `${API_URL}/attendances`,
+          {
+            headers: authHeaders(),
+          },
+        ),
+      ])
 
       if (
         eventsResponse.status === 401 ||
@@ -272,91 +1191,123 @@ function App() {
         return
       }
 
-      if (eventsResponse.ok) {
-        const eventsData = await eventsResponse.json()
+      const eventsData =
+        await eventsResponse.json()
 
+      const meetingsData =
+        await meetingsResponse.json()
+
+      const attendanceData =
+        await attendanceResponse.json()
+
+      if (eventsResponse.ok) {
         setEvents(
           Array.isArray(eventsData)
             ? eventsData
-            : eventsData.events ?? [],
+            : eventsData.events ??
+                eventsData.data ??
+                [],
         )
       }
 
       if (meetingsResponse.ok) {
-        const meetingsData = await meetingsResponse.json()
-
         setMeetings(
           Array.isArray(meetingsData)
             ? meetingsData
-            : meetingsData.meetings ?? [],
+            : meetingsData.meetings ??
+                meetingsData.data ??
+                [],
         )
       }
 
       if (attendanceResponse.ok) {
-        const attendanceData = await attendanceResponse.json()
-
         setAttendance(
-          Array.isArray(attendanceData)
+          Array.isArray(
+            attendanceData,
+          )
             ? attendanceData
-            : attendanceData.attendances ?? [],
+            : attendanceData.attendances ??
+                attendanceData.data ??
+                [],
         )
       }
     } catch (error) {
-      console.error('Error loading data:', error)
+      console.error(
+        'Unable to load system data:',
+        error,
+      )
     } finally {
       setLoading(false)
     }
   }
 
-  // ==========================================
-  // NAVIGATION
-  // ==========================================
+  useEffect(() => {
+    if (token) {
+      loadData()
+    }
+  }, [token])
 
-  const navigate = (destination: Page) => {
+  // ============================================================
+  // NAVIGATION
+  // ============================================================
+
+  const navigate = (
+    destination: Page,
+  ) => {
     setPage(destination)
     setMenuOpen(false)
+    setProfileOpen(false)
   }
 
-  // ==========================================
-  // EVENTS
-  // ==========================================
+  // ============================================================
+  // CREATE EVENT
+  // ============================================================
 
-  const createEvent = async (e: FormEvent) => {
+  const createEvent = async (
+    e: FormEvent,
+  ) => {
     e.preventDefault()
 
-    if (!isAdmin) {
-      alert('Only an administrator can create events.')
+    if (!can('meetings.create')) {
+      alert(
+        'You do not have permission to create events.',
+      )
       return
     }
 
     try {
-      const response = await fetch(`${API_URL}/events`, {
-        method: 'POST',
-        headers: {
-          ...authHeaders(),
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${API_URL}/events`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(
+            eventForm,
+          ),
         },
-        body: JSON.stringify(eventForm),
-      })
-
-      if (response.status === 403) {
-        alert('Only the administrator can create events.')
-        return
-      }
+      )
 
       if (response.status === 401) {
         await logout()
         return
       }
 
+      const data =
+        await response.json()
+
       if (!response.ok) {
-        alert('Could not create event.')
-        return
+        throw new Error(
+          data.message ||
+            'Unable to create event.',
+        )
       }
 
-      const data = await response.json()
-
-      setEvents((current) => [...current, data.event ?? data])
+      setEvents((current) => [
+        ...current,
+        data.event ??
+          data.data ??
+          data,
+      ])
 
       setEventForm({
         name: '',
@@ -366,147 +1317,235 @@ function App() {
         description: '',
       })
 
-      alert('Event created successfully!')
+      alert(
+        'Event created successfully.',
+      )
+
       navigate('events')
     } catch (error) {
-      console.error(error)
-      alert('Error creating event.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to create event.',
+      )
     }
   }
 
-  const editEvent = async (event: Event) => {
-    if (!isAdmin || !event.id) return
+  // ============================================================
+  // EDIT EVENT
+  // ============================================================
 
-    const name = window.prompt('Event name:', event.name)
+  const editEvent = async (
+    event: Event,
+  ) => {
+    if (
+      !can('meetings.update') ||
+      !event.id
+    ) {
+      return
+    }
+
+    const name = window.prompt(
+      'Event name:',
+      event.name,
+    )
 
     if (name === null) return
 
-    const date = window.prompt('Date:', event.date)
+    const date = window.prompt(
+      'Date (YYYY-MM-DD):',
+      event.date,
+    )
 
     if (date === null) return
 
-    const time = window.prompt('Time:', event.time)
+    const time = window.prompt(
+      'Time:',
+      event.time,
+    )
 
     if (time === null) return
 
-    const venue = window.prompt('Venue:', event.venue)
+    const venue = window.prompt(
+      'Venue:',
+      event.venue,
+    )
 
     if (venue === null) return
 
     try {
-      const response = await fetch(`${API_URL}/events/${event.id}`, {
-        method: 'PUT',
-        headers: {
-          ...authHeaders(),
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${API_URL}/events/${event.id}`,
+        {
+          method: 'PUT',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            name,
+            date,
+            time,
+            venue,
+            description:
+              event.description ?? '',
+          }),
         },
-        body: JSON.stringify({
-          name,
-          date,
-          time,
-          venue,
-          description: event.description ?? '',
-        }),
-      })
+      )
 
-      if (response.status === 403) {
-        alert('Only the administrator can edit events.')
+      if (response.status === 401) {
+        await logout()
         return
       }
+
+      const data =
+        await response.json()
 
       if (!response.ok) {
-        alert('Could not update event.')
-        return
+        throw new Error(
+          data.message ||
+            'Unable to update event.',
+        )
       }
 
-      const data = await response.json()
-
-      const updatedEvent = data.event ?? data
+      const updated =
+        data.event ??
+        data.data ??
+        data
 
       setEvents((current) =>
         current.map((item) =>
-          item.id === event.id ? updatedEvent : item,
+          item.id === event.id
+            ? updated
+            : item,
         ),
       )
 
-      alert('Event updated successfully!')
+      alert(
+        'Event updated successfully.',
+      )
     } catch (error) {
-      console.error(error)
-      alert('Error updating event.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update event.',
+      )
     }
   }
 
-  const deleteEvent = async (id?: number) => {
-    if (!isAdmin || !id) return
+  // ============================================================
+  // DELETE EVENT
+  // ============================================================
 
-    if (!window.confirm('Are you sure you want to delete this event?')) {
+  const deleteEvent = async (
+    id?: number,
+  ) => {
+    if (
+      !can('meetings.update') ||
+      !id
+    ) {
+      return
+    }
+
+    if (
+      !window.confirm(
+        'Are you sure you want to delete this event?',
+      )
+    ) {
       return
     }
 
     try {
-      const response = await fetch(`${API_URL}/events/${id}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      })
-
-      if (response.status === 403) {
-        alert('Only the administrator can delete events.')
-        return
-      }
-
-      if (response.ok) {
-        setEvents((current) =>
-          current.filter((event) => event.id !== id),
-        )
-      } else {
-        alert('Could not delete event.')
-      }
-    } catch (error) {
-      console.error(error)
-      alert('Error deleting event.')
-    }
-  }
-
-  // ==========================================
-  // MEETINGS
-  // ==========================================
-
-  const createMeeting = async (e: FormEvent) => {
-    e.preventDefault()
-
-    if (!isAdmin) {
-      alert('Only an administrator can create meetings.')
-      return
-    }
-
-    try {
-      const response = await fetch(`${API_URL}/meetings`, {
-        method: 'POST',
-        headers: {
-          ...authHeaders(),
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${API_URL}/events/${id}`,
+        {
+          method: 'DELETE',
+          headers: authHeaders(),
         },
-        body: JSON.stringify(meetingForm),
-      })
+      )
 
-      if (response.status === 403) {
-        alert('Only the administrator can create meetings.')
+      if (response.status === 401) {
+        await logout()
         return
       }
+
+      const data =
+        await response
+          .json()
+          .catch(() => ({}))
 
       if (!response.ok) {
-        alert('Could not create meeting.')
+        throw new Error(
+          data.message ||
+            'Unable to delete event.',
+        )
+      }
+
+      setEvents((current) =>
+        current.filter(
+          (event) =>
+            event.id !== id,
+        ),
+      )
+
+      alert(
+        'Event deleted successfully.',
+      )
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete event.',
+      )
+    }
+  }
+
+  // ============================================================
+  // CREATE MEETING
+  // ============================================================
+
+  const createMeeting = async (
+    e: FormEvent,
+  ) => {
+    e.preventDefault()
+
+    if (!can('meetings.create')) {
+      alert(
+        'You do not have permission to create meetings.',
+      )
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/meetings`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(
+            meetingForm,
+          ),
+        },
+      )
+
+      if (response.status === 401) {
+        await logout()
         return
       }
 
-      const data = await response.json()
+      const data =
+        await response.json()
 
-const newMeeting = data.meeting ?? data.data ?? data
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Unable to create meeting.',
+        )
+      }
 
-setMeetings((current) => [
-  ...current,
-  newMeeting,
-])
+      setMeetings((current) => [
+        ...current,
+        data.meeting ??
+          data.data ??
+          data,
+      ])
 
       setMeetingForm({
         title: '',
@@ -516,16 +1555,33 @@ setMeetings((current) => [
         description: '',
       })
 
-      alert('Meeting created successfully!')
+      alert(
+        'Meeting created successfully.',
+      )
+
       navigate('meetings')
     } catch (error) {
-      console.error(error)
-      alert('Error creating meeting.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to create meeting.',
+      )
     }
   }
 
-  const editMeeting = async (meeting: Meeting) => {
-    if (!isAdmin || !meeting.id) return
+  // ============================================================
+  // EDIT MEETING
+  // ============================================================
+
+  const editMeeting = async (
+    meeting: Meeting,
+  ) => {
+    if (
+      !can('meetings.update') ||
+      !meeting.id
+    ) {
+      return
+    }
 
     const title = window.prompt(
       'Meeting title:',
@@ -534,15 +1590,24 @@ setMeetings((current) => [
 
     if (title === null) return
 
-    const date = window.prompt('Date:', meeting.date)
+    const date = window.prompt(
+      'Date (YYYY-MM-DD):',
+      meeting.date,
+    )
 
     if (date === null) return
 
-    const time = window.prompt('Time:', meeting.time)
+    const time = window.prompt(
+      'Time:',
+      meeting.time,
+    )
 
     if (time === null) return
 
-    const venue = window.prompt('Venue:', meeting.venue)
+    const venue = window.prompt(
+      'Venue:',
+      meeting.venue,
+    )
 
     if (venue === null) return
 
@@ -551,51 +1616,77 @@ setMeetings((current) => [
         `${API_URL}/meetings/${meeting.id}`,
         {
           method: 'PUT',
-          headers: {
-            ...authHeaders(),
-            'Content-Type': 'application/json',
-          },
+          headers: authHeaders(),
           body: JSON.stringify({
             title,
             date,
             time,
             venue,
-            description: meeting.description ?? '',
+            description:
+              meeting.description ?? '',
           }),
         },
       )
 
-      if (response.status === 403) {
-        alert('Only the administrator can edit meetings.')
+      if (response.status === 401) {
+        await logout()
         return
       }
+
+      const data =
+        await response.json()
 
       if (!response.ok) {
-        alert('Could not update meeting.')
-        return
+        throw new Error(
+          data.message ||
+            'Unable to update meeting.',
+        )
       }
 
-      const data = await response.json()
-
-      const updatedMeeting = data.meeting ?? data
+      const updated =
+        data.meeting ??
+        data.data ??
+        data
 
       setMeetings((current) =>
         current.map((item) =>
-          item.id === meeting.id ? updatedMeeting : item,
+          item.id === meeting.id
+            ? updated
+            : item,
         ),
       )
 
-      alert('Meeting updated successfully!')
+      alert(
+        'Meeting updated successfully.',
+      )
     } catch (error) {
-      console.error(error)
-      alert('Error updating meeting.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update meeting.',
+      )
     }
   }
 
-  const deleteMeeting = async (id?: number) => {
-    if (!isAdmin || !id) return
+  // ============================================================
+  // DELETE MEETING
+  // ============================================================
 
-    if (!window.confirm('Delete this meeting?')) {
+  const deleteMeeting = async (
+    id?: number,
+  ) => {
+    if (
+      !can('attendance.correct') ||
+      !id
+    ) {
+      return
+    }
+
+    if (
+      !window.confirm(
+        'Are you sure you want to delete this meeting?',
+      )
+    ) {
       return
     }
 
@@ -608,73 +1699,106 @@ setMeetings((current) => [
         },
       )
 
-      if (response.status === 403) {
-        alert('Only the administrator can delete meetings.')
+      if (response.status === 401) {
+        await logout()
         return
       }
 
-      if (response.ok) {
-        setMeetings((current) =>
-          current.filter((meeting) => meeting.id !== id),
+      const data =
+        await response
+          .json()
+          .catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Unable to delete meeting.',
         )
-      } else {
-        alert('Could not delete meeting.')
       }
+
+      setMeetings((current) =>
+        current.filter(
+          (meeting) =>
+            meeting.id !== id,
+        ),
+      )
+
+      alert(
+        'Meeting deleted successfully.',
+      )
     } catch (error) {
-      console.error(error)
-      alert('Error deleting meeting.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete meeting.',
+      )
     }
   }
 
-  // ==========================================
-  // ATTENDANCE
-  // ==========================================
+  // ============================================================
+  // RECORD ATTENDANCE
+  // ============================================================
 
-  const recordAttendance = async (e: FormEvent) => {
+  const recordAttendance = async (
+    e: FormEvent,
+  ) => {
     e.preventDefault()
 
-    if (!isAdmin) {
-      alert('Only an administrator can record attendance.')
+    if (!can('attendance.capture')) {
+      alert(
+        'You do not have permission to record attendance.',
+      )
       return
     }
 
     if (
       !attendanceForm.meeting_id ||
-      !attendanceForm.attendee_name
+      !attendanceForm.attendee_name.trim()
     ) {
-      alert('Please fill in all required fields.')
+      alert(
+        'Please select a meeting and enter the attendee name.',
+      )
       return
     }
 
     try {
-      const response = await fetch(`${API_URL}/attendances`, {
-        method: 'POST',
-        headers: {
-          ...authHeaders(),
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${API_URL}/attendances`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            meeting_id: Number(
+              attendanceForm.meeting_id,
+            ),
+            attendee_name:
+              attendanceForm.attendee_name.trim(),
+            status:
+              attendanceForm.status,
+          }),
         },
-        body: JSON.stringify({
-          meeting_id: Number(attendanceForm.meeting_id),
-          attendee_name: attendanceForm.attendee_name,
-          status: attendanceForm.status,
-        }),
-      })
+      )
 
-      if (response.status === 403) {
-        alert('Only the administrator can record attendance.')
+      if (response.status === 401) {
+        await logout()
         return
       }
+
+      const data =
+        await response.json()
 
       if (!response.ok) {
-        alert('Could not record attendance.')
-        return
+        throw new Error(
+          data.message ||
+            'Unable to record attendance.',
+        )
       }
-
-      const data = await response.json()
 
       setAttendance((current) => [
         ...current,
-        data.attendance ?? data,
+        data.attendance ??
+          data.data ??
+          data,
       ])
 
       setAttendanceForm({
@@ -683,33 +1807,62 @@ setMeetings((current) => [
         status: 'present',
       })
 
-      alert('Attendance recorded successfully!')
+      alert(
+        'Attendance recorded successfully.',
+      )
     } catch (error) {
-      console.error(error)
-      alert('Error recording attendance.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to record attendance.',
+      )
     }
   }
 
-  const editAttendance = async (record: Attendance) => {
-    if (!isAdmin || !record.id) return
+  // ============================================================
+  // EDIT ATTENDANCE
+  // ============================================================
 
-    const attendeeName = window.prompt(
-      'Attendee name:',
-      record.attendee_name,
-    )
+  const editAttendance = async (
+    record: Attendance,
+  ) => {
+    if (
+      !can('attendance.correct') ||
+      !record.id
+    ) {
+      return
+    }
 
-    if (attendeeName === null) return
+    const attendeeName =
+      window.prompt(
+        'Attendee name:',
+        record.attendee_name,
+      )
 
-    const status = window.prompt(
-      'Status (present or absent):',
-      record.status,
-    )
+    if (attendeeName === null) {
+      return
+    }
+
+    const statusInput =
+      window.prompt(
+        'Status (present or absent):',
+        record.status,
+      )
+
+    if (statusInput === null) {
+      return
+    }
+
+    const status =
+      statusInput.toLowerCase()
 
     if (
       status !== 'present' &&
       status !== 'absent'
     ) {
-      alert('Status must be present or absent.')
+      alert(
+        'Status must be present or absent.',
+      )
       return
     }
 
@@ -718,51 +1871,76 @@ setMeetings((current) => [
         `${API_URL}/attendances/${record.id}`,
         {
           method: 'PUT',
-          headers: {
-            ...authHeaders(),
-            'Content-Type': 'application/json',
-          },
+          headers: authHeaders(),
           body: JSON.stringify({
-            meeting_id: record.meeting_id,
-            attendee_name: attendeeName,
+            meeting_id:
+              record.meeting_id,
+            attendee_name:
+              attendeeName.trim(),
             status,
           }),
         },
       )
 
-      if (response.status === 403) {
-        alert('Only the administrator can edit attendance.')
+      if (response.status === 401) {
+        await logout()
         return
       }
+
+      const data =
+        await response.json()
 
       if (!response.ok) {
-        alert('Could not update attendance.')
-        return
+        throw new Error(
+          data.message ||
+            'Unable to update attendance.',
+        )
       }
 
-      const data = await response.json()
-
-      const updatedAttendance = data.attendance ?? data
+      const updated =
+        data.attendance ??
+        data.data ??
+        data
 
       setAttendance((current) =>
         current.map((item) =>
           item.id === record.id
-            ? updatedAttendance
+            ? updated
             : item,
         ),
       )
 
-      alert('Attendance updated successfully!')
+      alert(
+        'Attendance updated successfully.',
+      )
     } catch (error) {
-      console.error(error)
-      alert('Error updating attendance.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update attendance.',
+      )
     }
   }
 
-  const deleteAttendance = async (id?: number) => {
-    if (!isAdmin || !id) return
+  // ============================================================
+  // DELETE ATTENDANCE
+  // ============================================================
 
-    if (!window.confirm('Delete this attendance record?')) {
+  const deleteAttendance = async (
+    id?: number,
+  ) => {
+    if (
+      !can('attendance.correct') ||
+      !id
+    ) {
+      return
+    }
+
+    if (
+      !window.confirm(
+        'Are you sure you want to delete this attendance record?',
+      )
+    ) {
       return
     }
 
@@ -775,222 +1953,911 @@ setMeetings((current) => [
         },
       )
 
-      if (response.status === 403) {
-        alert('Only the administrator can delete attendance.')
+      if (response.status === 401) {
+        await logout()
         return
       }
 
-      if (response.ok) {
-        setAttendance((current) =>
-          current.filter((record) => record.id !== id),
+      const data =
+        await response
+          .json()
+          .catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            'Unable to delete attendance.',
         )
-      } else {
-        alert('Could not delete attendance.')
       }
+
+      setAttendance((current) =>
+        current.filter(
+          (item) =>
+            item.id !== id,
+        ),
+      )
+
+      alert(
+        'Attendance deleted successfully.',
+      )
     } catch (error) {
-      console.error(error)
-      alert('Error deleting attendance.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete attendance.',
+      )
     }
   }
 
-  // ==========================================
-  // STATISTICS
-  // ==========================================
+  // ============================================================
+  // ATTENDANCE COUNTS
+  // ============================================================
 
-  const presentCount = attendance.filter(
-    (record) => record.status === 'present',
-  ).length
+  const presentCount =
+    attendance.filter(
+      (record) =>
+        record.status === 'present',
+    ).length
 
-  const absentCount = attendance.filter(
-    (record) => record.status === 'absent',
-  ).length
+  const absentCount =
+    attendance.filter(
+      (record) =>
+        record.status === 'absent',
+    ).length
 
-  const closeMenuOnOverlay = () => {
-    if (menuOpen) {
-      setMenuOpen(false)
-    }
-  }
+  // ============================================================
+  // LOGIN / REGISTRATION SCREEN
+  // ============================================================
 
-  // ==========================================
-  // LOGIN SCREEN
-  // ==========================================
-
-  if (!user) {
+  if (!user || !token) {
     return (
-      <div className="app">
-        <main className="main-content login-page">
-          <section className="login-card">
-            <div className="login-logo">TT</div>
+      <div className="login-page">
+        <div className="login-card">
 
-            <span className="eyebrow">
-              COUNTY MANAGEMENT PORTAL
-            </span>
+          <div className="login-logo">
+            TT
+          </div>
 
-            <h1>Taita Taveta County</h1>
+          <span className="eyebrow">
+            COUNTY MANAGEMENT PORTAL
+          </span>
 
-            <p className="login-subtitle">
-              Events & Meetings Management System
-            </p>
+          <h1>
+            Taita Taveta County
+          </h1>
 
-            <form onSubmit={login}>
-              <div className="form-group">
-                <label>Email</label>
+          <p className="login-subtitle">
+            Events & Meetings Management System
+          </p>
+
+          {/* ==================================================
+              NEW REGISTRATION
+          ================================================== */}
+
+          {showRegistration ? (
+            <>
+              {registrationStep === 'form' && (
+                <form
+                  onSubmit={startRegistration}
+                  className="employee-login"
+                >
+                  <h2>
+                    Create Employee Account
+                  </h2>
+
+                  <p>
+                    Register using your email
+                    address. A verification OTP
+                    will be sent to your email.
+                  </p>
+
+                  <label>
+                    Full Name
+                  </label>
+
+                  <input
+                    type="text"
+                    value={
+                      registerForm.name
+                    }
+                    onChange={(e) =>
+                      setRegisterForm({
+                        ...registerForm,
+                        name:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="Enter your full name"
+                    required
+                  />
+
+                  <label>
+                    Email Address
+                  </label>
+
+                  <input
+                    type="email"
+                    value={
+                      registerForm.email
+                    }
+                    onChange={(e) =>
+                      setRegisterForm({
+                        ...registerForm,
+                        email:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="e.g. gloriahkitonga@gmail.com"
+                    required
+                  />
+
+                  <label>
+                    Phone Number
+                  </label>
+
+                  <input
+                    type="tel"
+                    value={
+                      registerForm.phone
+                    }
+                    onChange={(e) =>
+                      setRegisterForm({
+                        ...registerForm,
+                        phone:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="e.g. 0712345678"
+                  />
+
+                  <label>
+                    Department
+                  </label>
+
+                  <input
+                    type="text"
+                    value={
+                      registerForm.department
+                    }
+                    onChange={(e) =>
+                      setRegisterForm({
+                        ...registerForm,
+                        department:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="e.g. ICT"
+                  />
+
+                  <label>
+                    Position
+                  </label>
+
+                  <input
+                    type="text"
+                    value={
+                      registerForm.position
+                    }
+                    onChange={(e) =>
+                      setRegisterForm({
+                        ...registerForm,
+                        position:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="e.g. ICT Officer"
+                  />
+
+                  {registrationError && (
+                    <div className="error-message">
+                      {registrationError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      registrationLoading
+                    }
+                  >
+                    {registrationLoading
+                      ? 'Starting Registration...'
+                      : 'Register'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button full-button"
+                    onClick={
+                      cancelRegistration
+                    }
+                    disabled={
+                      registrationLoading
+                    }
+                  >
+                    Back to Sign In
+                  </button>
+                </form>
+              )}
+
+              {/* ==================================================
+                  REGISTRATION OTP
+              ================================================== */}
+
+              {registrationStep === 'otp' && (
+                <form
+                  onSubmit={
+                    verifyRegistrationOtp
+                  }
+                  className="employee-login"
+                >
+                  <h2>
+                    Verify Your Email
+                  </h2>
+
+                  <p>
+                    We sent a 6-digit
+                    verification OTP to:
+                  </p>
+
+                  <strong>
+                    {registerForm.email}
+                  </strong>
+
+                  <label>
+                    Verification OTP
+                  </label>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={
+                      registrationOtp
+                    }
+                    onChange={(e) =>
+                      setRegistrationOtp(
+                        e.target.value
+                          .replace(/\D/g, '')
+                          .slice(0, 6),
+                      )
+                    }
+                    placeholder="Enter 6-digit OTP"
+                    required
+                  />
+
+                  {registrationError && (
+                    <div className="error-message">
+                      {registrationError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      registrationLoading ||
+                      registrationOtp.length !==
+                        6
+                    }
+                  >
+                    {registrationLoading
+                      ? 'Verifying...'
+                      : 'Verify Email'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button full-button"
+                    onClick={
+                      cancelRegistration
+                    }
+                    disabled={
+                      registrationLoading
+                    }
+                  >
+                    Cancel Registration
+                  </button>
+                </form>
+              )}
+
+              {/* ==================================================
+                  REGISTRATION PASSWORD
+              ================================================== */}
+
+              {registrationStep ===
+                'password' && (
+                <form
+                  onSubmit={
+                    completeRegistration
+                  }
+                  className="employee-login"
+                >
+                  <h2>
+                    Create Your Password
+                  </h2>
+
+                  <p>
+                    Your email has been
+                    verified. Create a
+                    password to complete your
+                    employee account.
+                  </p>
+
+                  <label>
+                    New Password
+                  </label>
+
+                  <input
+                    type="password"
+                    value={
+                      registrationPassword
+                    }
+                    onChange={(e) =>
+                      setRegistrationPassword(
+                        e.target.value,
+                      )
+                    }
+                    placeholder="Enter password"
+                    required
+                  />
+
+                  <label>
+                    Confirm Password
+                  </label>
+
+                  <input
+                    type="password"
+                    value={
+                      registrationConfirmPassword
+                    }
+                    onChange={(e) =>
+                      setRegistrationConfirmPassword(
+                        e.target.value,
+                      )
+                    }
+                    placeholder="Confirm password"
+                    required
+                  />
+
+                  {registrationError && (
+                    <div className="error-message">
+                      {registrationError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      registrationLoading
+                    }
+                  >
+                    {registrationLoading
+                      ? 'Creating Account...'
+                      : 'Complete Registration'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button full-button"
+                    onClick={
+                      cancelRegistration
+                    }
+                    disabled={
+                      registrationLoading
+                    }
+                  >
+                    Cancel
+                  </button>
+                </form>
+              )}
+            </>
+          ) : !showEmployeeVerification ? (
+
+            /* ==================================================
+               NORMAL LOGIN
+            ================================================== */
+
+            <>
+              <form
+                onSubmit={login}
+                className="employee-login"
+              >
+                <h2>
+                  Government Employee Login
+                </h2>
+
+                <p>
+                  Sign in with your
+                  registered email and
+                  password.
+                </p>
+
+                <label>
+                  Email
+                </label>
 
                 <input
                   type="email"
-                  value={loginForm.email}
+                  value={
+                    loginForm.email
+                  }
                   onChange={(e) =>
                     setLoginForm({
                       ...loginForm,
-                      email: e.target.value,
+                      email:
+                        e.target.value,
                     })
                   }
-                  placeholder="Enter your email"
+                  placeholder="e.g. gloria@county.go.ke"
                   required
                 />
-              </div>
 
-              <div className="form-group">
-                <label>Password</label>
+                <label>
+                  Password
+                </label>
 
                 <input
                   type="password"
-                  value={loginForm.password}
+                  value={
+                    loginForm.password
+                  }
                   onChange={(e) =>
                     setLoginForm({
                       ...loginForm,
-                      password: e.target.value,
+                      password:
+                        e.target.value,
                     })
                   }
                   placeholder="Enter your password"
                   required
                 />
+
+                {loginError && (
+                  <div className="error-message">
+                    {loginError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={
+                    loginLoading
+                  }
+                >
+                  {loginLoading
+                    ? 'Signing in...'
+                    : 'Sign In'}
+                </button>
+              </form>
+
+              <div className="login-divider">
+                or
               </div>
 
-              {loginError && (
-                <div className="login-error">
-                  {loginError}
-                </div>
-              )}
+              {/* NEW REGISTRATION BUTTON */}
 
               <button
-                type="submit"
-                className="primary-button full-button"
+                type="button"
+                className="secondary-button full-button"
+                onClick={() => {
+                  setShowRegistration(
+                    true,
+                  )
+
+                  setShowEmployeeVerification(
+                    false,
+                  )
+
+                  setLoginError('')
+                  setRegistrationError('')
+                }}
                 disabled={loginLoading}
               >
-                {loginLoading
-                  ? 'Signing in...'
-                  : 'Sign In'}
+                Create Employee Account
               </button>
-            </form>
 
-            <p style={{ textAlign: 'center', margin: '18px 0' }}>
-              or
-            </p>
+              {/* EXISTING EMPLOYEE VERIFICATION */}
 
-            <button
-              type="button"
-              className="secondary-button full-button"
-              onClick={continueAsUser}
-              disabled={loginLoading}
-            >
-              {loginLoading
-                ? 'Please wait...'
-                : 'Continue as User'}
-            </button>
+              <button
+                type="button"
+                className="secondary-button full-button"
+                onClick={() => {
+                  setShowEmployeeVerification(
+                    true,
+                  )
 
-            <div className="login-info">
-              <strong>Access Control</strong>
+                  setLoginError('')
+                  setOtp('')
+                  setOtpSent(false)
+                  setPasswordSetup(false)
+                }}
+                disabled={loginLoading}
+              >
+                First-time Government Employee Verification
+              </button>
 
-              <p>
-                Administrators can manage system information.
-                Other users have view-only access.
-              </p>
-            </div>
-          </section>
-        </main>
+              <div className="login-info">
+                <strong>
+                  Access Control
+                </strong>
+
+                <p>
+                  Your employee role
+                  determines whether you can
+                  manage records or have
+                  view-only access.
+                </p>
+              </div>
+            </>
+
+          ) : (
+
+            /* ==================================================
+               EXISTING EMPLOYEE VERIFICATION
+            ================================================== */
+
+            <>
+              {!otpSent &&
+              !passwordSetup ? (
+                <div className="employee-login">
+
+                  <h2>
+                    Government Employee
+                    Verification
+                  </h2>
+
+                  <p>
+                    Enter your registered
+                    government employee email
+                    to receive a 6-digit OTP.
+                  </p>
+
+                  <label>
+                    Government Email
+                  </label>
+
+                  <input
+                    type="email"
+                    value={
+                      loginForm.email
+                    }
+                    onChange={(e) =>
+                      setLoginForm({
+                        ...loginForm,
+                        email:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="e.g. gloria@county.go.ke"
+                    required
+                  />
+
+                  {loginError && (
+                    <div className="error-message">
+                      {loginError}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={
+                      sendEmployeeOtp
+                    }
+                    disabled={
+                      loginLoading ||
+                      !loginForm.email.trim()
+                    }
+                  >
+                    {loginLoading
+                      ? 'Sending OTP...'
+                      : 'Send Verification OTP'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button full-button"
+                    onClick={() => {
+                      setShowEmployeeVerification(
+                        false,
+                      )
+
+                      setOtpSent(false)
+                      setPasswordSetup(
+                        false,
+                      )
+
+                      setOtp('')
+                      setEmployeeId(null)
+                      setLoginError('')
+                    }}
+                    disabled={
+                      loginLoading
+                    }
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+
+              ) : passwordSetup ? (
+
+                /* EXISTING EMPLOYEE PASSWORD */
+
+                <form
+                  className="employee-login"
+                  onSubmit={
+                    setEmployeePassword
+                  }
+                >
+                  <h2>
+                    Create Your Password
+                  </h2>
+
+                  <p>
+                    Your email has been
+                    verified. Create a
+                    password for future
+                    logins.
+                  </p>
+
+                  <label>
+                    New Password
+                  </label>
+
+                  <input
+                    type="password"
+                    value={
+                      newPassword
+                    }
+                    onChange={(e) =>
+                      setNewPassword(
+                        e.target.value,
+                      )
+                    }
+                    placeholder="Enter password"
+                    required
+                  />
+
+                  <label>
+                    Confirm Password
+                  </label>
+
+                  <input
+                    type="password"
+                    value={
+                      confirmPassword
+                    }
+                    onChange={(e) =>
+                      setConfirmPassword(
+                        e.target.value,
+                      )
+                    }
+                    placeholder="Confirm password"
+                    required
+                  />
+
+                  {passwordError && (
+                    <div className="error-message">
+                      {passwordError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      passwordLoading
+                    }
+                  >
+                    {passwordLoading
+                      ? 'Saving Password...'
+                      : 'Create Password'}
+                  </button>
+                </form>
+
+              ) : (
+
+                /* EXISTING EMPLOYEE OTP */
+
+                <form
+                  className="employee-login"
+                  onSubmit={
+                    verifyEmployeeOtp
+                  }
+                >
+                  <h2>
+                    Verify Your Email
+                  </h2>
+
+                  <p>
+                    A 6-digit OTP has been
+                    sent to your registered
+                    government email.
+                  </p>
+
+                  <label>
+                    Verification OTP
+                  </label>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) =>
+                      setOtp(
+                        e.target.value
+                          .replace(/\D/g, '')
+                          .slice(0, 6),
+                      )
+                    }
+                    placeholder="Enter 6-digit OTP"
+                    required
+                  />
+
+                  {loginError && (
+                    <div className="error-message">
+                      {loginError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      loginLoading ||
+                      otp.length !== 6
+                    }
+                  >
+                    {loginLoading
+                      ? 'Verifying...'
+                      : 'Verify & Continue'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button full-button"
+                    onClick={() => {
+                      setShowEmployeeVerification(
+                        false,
+                      )
+
+                      setOtpSent(false)
+                      setOtp('')
+                      setEmployeeId(null)
+                      setLoginError('')
+                    }}
+                    disabled={
+                      loginLoading
+                    }
+                  >
+                    Back to Sign In
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+        </div>
       </div>
     )
   }
 
-  // ==========================================
-  // MAIN APPLICATION
-  // ==========================================
+  // ============================================================
+  // AUTHENTICATED APPLICATION
+  // ============================================================
 
   return (
     <div className="app">
 
-      {/* HEADER */}
+      {/* ======================================================
+          TOP BAR
+      ====================================================== */}
 
       <header className="topbar">
-        <div className="topbar-left">
 
-          <button
-            className="menu-button"
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Open navigation menu"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
+        <button
+          className="menu-button"
+          onClick={() => {
+            setMenuOpen(!menuOpen)
+            setProfileOpen(false)
+          }}
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
 
-          <div className="brand">
-            <div className="brand-logo">
-              TT
-            </div>
+        <div className="brand">
 
-            <div>
-              <h1>Taita Taveta County</h1>
+          <div className="brand-logo">
+            TT
+          </div>
 
-              <span>
-                Events & Meetings Management System
-              </span>
-            </div>
+          <div>
+            <strong>
+              Taita Taveta County
+            </strong>
+
+            <span>
+              Events & Meetings Management
+            </span>
           </div>
 
         </div>
+<div className="topbar-profile">
 
-        <div className="topbar-right">
+  <button
+    type="button"
+    className="profile-trigger"
+    onClick={() => setProfileOpen((current) => !current)}
+    aria-expanded={profileOpen}
+    aria-label="Open profile menu"
+  >
+    <span className="profile-avatar">
+      {user.name.charAt(0).toUpperCase()}
+    </span>
 
-          <div className="online-dot"></div>
+    <span className="topbar-user-info">
+      <strong>{user.name}</strong>
+      <small>{user.role.replaceAll('_', ' ')}</small>
+    </span>
 
-          <span>
-            {isAdmin ? 'Administrator' : 'View Only User'}
-          </span>
+    <span className="profile-chevron">
+      {profileOpen ? '▲' : '▼'}
+    </span>
+  </button>
 
-          <button
-            className="secondary-button"
-            onClick={logout}
-          >
-            Logout
-          </button>
-
+  {profileOpen && (
+    <div className="profile-dropdown">
+      <div className="profile-dropdown-header">
+        <span className="profile-avatar large">
+          {user.name.charAt(0).toUpperCase()}
+        </span>
+        <div>
+          <strong>{user.name}</strong>
+          <span>{user.email}</span>
         </div>
+      </div>
+
+      <button
+        type="button"
+        className="profile-menu-item"
+        onClick={() => navigate('account')}
+      >
+        <span>👤</span>
+        <span>
+          <strong>My Account</strong>
+          <small>View profile and permissions</small>
+        </span>
+      </button>
+
+      <div className="profile-divider" />
+
+      <button
+        type="button"
+        className="profile-menu-item logout-item"
+        onClick={logout}
+      >
+        <span>↪</span>
+        <span>
+          <strong>Sign Out</strong>
+          <small>End your current session</small>
+        </span>
+      </button>
+    </div>
+  )}
+
+</div>
+
       </header>
 
-      {/* SIDEBAR */}
+      {/* ======================================================
+          SIDEBAR
+      ====================================================== */}
 
       <aside
         className={`sidebar ${
-          menuOpen ? 'sidebar-open' : ''
+          menuOpen ? 'open' : ''
         }`}
       >
 
-        <div className="sidebar-header">
-
-          <h2>Navigation</h2>
-
-          <button
-            className="close-menu"
-            onClick={() => setMenuOpen(false)}
-          >
-            ×
-          </button>
-
-        </div>
-
-        <div className="sidebar-menu">
+        <nav>
 
           <button
             className={
@@ -998,10 +2865,11 @@ setMeetings((current) => [
                 ? 'active'
                 : ''
             }
-            onClick={() => navigate('dashboard')}
+            onClick={() =>
+              navigate('dashboard')
+            }
           >
-            <span>⌂</span>
-            Dashboard
+            <span className="nav-label"><span className="nav-icon">▦</span>Dashboard</span>
           </button>
 
           <button
@@ -1011,10 +2879,12 @@ setMeetings((current) => [
                 ? 'active'
                 : ''
             }
-            onClick={() => navigate('events')}
+            onClick={() =>
+              navigate('events')
+            }
           >
-            <span>▣</span>
-            Events
+            <span className="nav-label"><span className="nav-icon">◆</span>Events</span>
+            <span className="nav-count">{events.length}</span>
           </button>
 
           <button
@@ -1024,10 +2894,12 @@ setMeetings((current) => [
                 ? 'active'
                 : ''
             }
-            onClick={() => navigate('meetings')}
+            onClick={() =>
+              navigate('meetings')
+            }
           >
-            <span>▤</span>
-            Meetings
+            <span className="nav-label"><span className="nav-icon">▣</span>Meetings</span>
+            <span className="nav-count">{meetings.length}</span>
           </button>
 
           <button
@@ -1036,10 +2908,12 @@ setMeetings((current) => [
                 ? 'active'
                 : ''
             }
-            onClick={() => navigate('attendance')}
+            onClick={() =>
+              navigate('attendance')
+            }
           >
-            <span>✓</span>
-            Attendance
+            <span className="nav-label"><span className="nav-icon">✓</span>Attendance</span>
+            <span className="nav-count">{attendance.length}</span>
           </button>
 
           <button
@@ -1052,8 +2926,7 @@ setMeetings((current) => [
               navigate('notifications')
             }
           >
-            <span>🔔</span>
-            Notifications
+            <span className="nav-label"><span className="nav-icon">●</span>Notifications</span>
           </button>
 
           <button
@@ -1062,1516 +2935,143 @@ setMeetings((current) => [
                 ? 'active'
                 : ''
             }
-            onClick={() => navigate('reports')}
+            onClick={() =>
+              navigate('reports')
+            }
           >
-            <span>▥</span>
-            Reports
+            <span className="nav-label"><span className="nav-icon">▤</span>Reports</span>
           </button>
 
-        </div>
+          <button
+            className={
+              page === 'account'
+                ? 'active'
+                : ''
+            }
+            onClick={() =>
+              navigate('account')
+            }
+          >
+            <span className="nav-label"><span className="nav-icon">◉</span>My Account</span>
+          </button>
+
+        </nav>
 
         <div className="sidebar-footer">
-
-          <div className="county-badge">
-            TT
+          <div className="sidebar-user-summary">
+            <span className="profile-avatar">
+              {user.name.charAt(0).toUpperCase()}
+            </span>
+            <div>
+              <strong>{user.name}</strong>
+              <small>
+                {user.department ?? 'County Government'}
+              </small>
+            </div>
           </div>
 
-          <div>
-            <strong>{user.name}</strong>
+          <button
+            type="button"
+            className="sidebar-account-button"
+            onClick={() => navigate('account')}
+          >
+            <span>👤</span>
+            My Account
+          </button>
 
-            <small>
-              {isAdmin
-                ? 'Administrator'
-                : 'View Only User'}
-            </small>
-          </div>
-
+          <small className="sidebar-security-note">
+            Sign out is available from your profile menu.
+          </small>
         </div>
-
       </aside>
 
-      {menuOpen && (
-        <div
-          className="sidebar-overlay"
-          onClick={closeMenuOnOverlay}
-        ></div>
-      )}
-
-      {/* MAIN */}
+      {/* ======================================================
+          MAIN CONTENT
+      ====================================================== */}
 
       <main className="main-content">
 
-        {/* DASHBOARD */}
+        {loading && (
+          <div className="loading-bar">
+            Loading system data...
+          </div>
+        )}
+
+        {/* ====================================================
+            DASHBOARD
+        ==================================================== */}
 
         {page === 'dashboard' && (
-          <>
-            <section className="welcome-section">
+          <section>
+
+            <div className="page-heading">
 
               <div>
-                <span className="eyebrow">
-                  COUNTY MANAGEMENT PORTAL
-                </span>
 
-                <h2>
+                <p className="eyebrow">
+                  County Portal
+                </p>
+
+                <h1>
                   Welcome, {user.name}
-                </h2>
+                </h1>
 
                 <p>
-         {isAdmin
-  ? 'Manage county events, meetings, attendance and notifications from one central system.'
-  : 'View county events, meetings, attendance and notifications from one central system.'}
+                  Manage and view county
+                  events, meetings,
+                  attendance and
+                  notifications from one
+                  place.
                 </p>
 
-                <div className="role-display">
-                  <strong>
-                    Access level:
-                  </strong>{' '}
-                  {isAdmin
-                    ? 'Administrator'
-                    : 'View Only'}
-                </div>
               </div>
 
-              <div className="welcome-decoration">
-                <div className="big-tt">
-                  TT
-                </div>
+              <div className="role-badge">
+                Access:{' '}
+                <strong>
+                  {user.role}
+                </strong>
               </div>
 
-            </section>
+            </div>
 
-            <section className="stats-grid">
+            <div className="stats-grid">
 
-              <div className="stat-card green-card">
-                <div className="stat-icon">
-                  ▣
-                </div>
-
-                <div>
-                  <span>Total Events</span>
-                  <strong>
-                    {events.length}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="stat-card orange-card">
-                <div className="stat-icon">
-                  ▤
-                </div>
-
-                <div>
-                  <span>Total Meetings</span>
-                  <strong>
-                    {meetings.length}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="stat-card blue-card">
-                <div className="stat-icon">
-                  ✓
-                </div>
-
-                <div>
-                  <span>Attendance Records</span>
-                  <strong>
-                    {attendance.length}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="stat-card dark-card">
-                <div className="stat-icon">
-                  ●
-                </div>
-
-                <div>
-                  <span>Present</span>
-                  <strong>
-                    {presentCount}
-                  </strong>
-                </div>
-              </div>
-
-            </section>
-
-            <section className="dashboard-grid">
-
-              <div className="panel quick-panel">
-
-                <div className="panel-heading">
-                  <div>
-                    <span className="section-label">
-                      QUICK ACTIONS
-                    </span>
-
-                    <h3>
-                      What would you like to do?
-                    </h3>
-                  </div>
-                </div>
-
-                <div className="quick-actions">
-
-                  {isAdmin && (
-                    <>
-                      <button
-                        className="quick-action"
-                        onClick={() =>
-                          navigate('create-event')
-                        }
-                      >
-                        <div className="quick-icon green-icon">
-                          +
-                        </div>
-
-                        <div>
-                          <strong>
-                            Create Event
-                          </strong>
-
-                          <span>
-                            Add a new county event
-                          </span>
-                        </div>
-
-                        <b>→</b>
-                      </button>
-
-                      <button
-                        className="quick-action"
-                        onClick={() =>
-                          navigate('create-meeting')
-                        }
-                      >
-                        <div className="quick-icon orange-icon">
-                          +
-                        </div>
-
-                        <div>
-                          <strong>
-                            Create Meeting
-                          </strong>
-
-                          <span>
-                            Schedule a meeting
-                          </span>
-                        </div>
-
-                        <b>→</b>
-                      </button>
-
-                      <button
-                        className="quick-action"
-                        onClick={() =>
-                          navigate('attendance')
-                        }
-                      >
-                        <div className="quick-icon blue-icon">
-                          ✓
-                        </div>
-
-                        <div>
-                          <strong>
-                            Record Attendance
-                          </strong>
-
-                          <span>
-                            Register meeting attendance
-                          </span>
-                        </div>
-
-                        <b>→</b>
-                      </button>
-                    </>
-                  )}
-
-                  <button
-                    className="quick-action"
-                    onClick={() =>
-                      navigate('reports')
-                    }
-                  >
-                    <div className="quick-icon purple-icon">
-                      ▥
-                    </div>
-
-                    <div>
-                      <strong>
-                        View Reports
-                      </strong>
-
-                      <span>
-                        Review system statistics
-                      </span>
-                    </div>
-
-                    <b>→</b>
-                  </button>
-
-                </div>
-              </div>
-
-              <div className="panel overview-panel">
-
-                <div className="panel-heading">
-                  <div>
-                    <span className="section-label">
-                      SYSTEM OVERVIEW
-                    </span>
-
-                    <h3>
-                      Current Activity
-                    </h3>
-                  </div>
-                </div>
-
-                <div className="overview-item">
-                  <span className="overview-number">
-                    {events.length}
-                  </span>
-
-                  <div>
-                    <strong>Events</strong>
-                    <p>
-                      Registered in the system
-                    </p>
-                  </div>
-                </div>
-
-                <div className="overview-item">
-                  <span className="overview-number">
-                    {meetings.length}
-                  </span>
-
-                  <div>
-                    <strong>Meetings</strong>
-                    <p>
-                      Scheduled meetings
-                    </p>
-                  </div>
-                </div>
-
-                <div className="overview-item">
-                  <span className="overview-number">
-                    {presentCount}
-                  </span>
-
-                  <div>
-                    <strong>Present</strong>
-                    <p>
-                      Attendance confirmed
-                    </p>
-                  </div>
-                </div>
-
-              </div>
-
-            </section>
-
-            <section className="panel recent-panel">
-
-              <div className="panel-heading">
-
-                <div>
-                  <span className="section-label">
-                    RECENT EVENTS
-                  </span>
-
-                  <h3>
-                    Upcoming County Events
-                  </h3>
-                </div>
-
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    navigate('events')
-                  }
-                >
-                  View all →
-                </button>
-
-              </div>
-
-              {events.length === 0 ? (
-                <div className="empty-state">
-
-                  <div>▣</div>
-
-                  <h4>
-                    No events yet
-                  </h4>
-
-                  <p>
-                    {isAdmin
-                      ? 'Create your first county event to get started.'
-                      : 'No county events have been registered yet.'}
-                  </p>
-
-                  {isAdmin && (
-                    <button
-                      className="primary-button"
-                      onClick={() =>
-                        navigate('create-event')
-                      }
-                    >
-                      + Create Event
-                    </button>
-                  )}
-
-                </div>
-              ) : (
-                <div className="mini-table">
-
-                  {events
-                    .slice(0, 5)
-                    .map((event) => (
-                      <div
-                        className="mini-row"
-                        key={
-                          event.id ??
-                          event.name
-                        }
-                      >
-
-                        <div className="event-date">
-                          <strong>
-                            {event.date}
-                          </strong>
-
-                          <span>
-                            {event.time}
-                          </span>
-                        </div>
-
-                        <div>
-                          <strong>
-                            {event.name}
-                          </strong>
-
-                          <span>
-                            {event.venue}
-                          </span>
-                        </div>
-
-                        <span className="status-badge upcoming">
-                          Upcoming
-                        </span>
-
-                      </div>
-                    ))}
-
-                </div>
-              )}
-
-            </section>
-          </>
-        )}
-
-        {/* EVENTS */}
-
-        {page === 'events' && (
-          <section>
-
-            <div className="page-header">
-
-              <div>
-                <span className="eyebrow">
-                  EVENT MANAGEMENT
+              <div className="stat-card">
+                <span>
+                  Events
                 </span>
 
-                <h2>
-                  County Events
-                </h2>
-
-                <p>
-                  View and manage all registered county events.
-                </p>
-              </div>
-
-              {isAdmin && (
-                <button
-                  className="primary-button"
-                  onClick={() =>
-                    navigate('create-event')
-                  }
-                >
-                  + Create Event
-                </button>
-              )}
-
-            </div>
-
-            <div className="panel">
-
-              {loading ? (
-                <div className="loading-state">
-                  Loading events...
-                </div>
-              ) : events.length === 0 ? (
-                <div className="empty-state">
-
-                  <div>▣</div>
-
-                  <h4>
-                    No events found
-                  </h4>
-
-                  <p>
-                    {isAdmin
-                      ? 'Start by creating a new county event.'
-                      : 'No events have been registered.'}
-                  </p>
-
-                  {isAdmin && (
-                    <button
-                      className="primary-button"
-                      onClick={() =>
-                        navigate('create-event')
-                      }
-                    >
-                      + Create Event
-                    </button>
-                  )}
-
-                </div>
-              ) : (
-                <div className="table-container">
-
-                  <table>
-
-                    <thead>
-                      <tr>
-                        <th>Event</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Venue</th>
-
-                        {isAdmin && (
-                          <th>Action</th>
-                        )}
-                      </tr>
-                    </thead>
-
-                    <tbody>
-
-                      {events.map((event) => (
-                        <tr
-                          key={
-                            event.id ??
-                            event.name
-                          }
-                        >
-
-                          <td>
-                            <strong>
-                              {event.name}
-                            </strong>
-
-                            {event.description && (
-                              <small>
-                                {event.description}
-                              </small>
-                            )}
-                          </td>
-
-                          <td>
-                            {event.date}
-                          </td>
-
-                          <td>
-                            {event.time}
-                          </td>
-
-                          <td>
-                            {event.venue}
-                          </td>
-
-                          {isAdmin && (
-                            <td>
-
-                              <button
-                                className="secondary-button"
-                                onClick={() =>
-                                  editEvent(event)
-                                }
-                              >
-                                Edit
-                              </button>
-
-                              <button
-                                className="delete-button"
-                                onClick={() =>
-                                  deleteEvent(
-                                    event.id,
-                                  )
-                                }
-                              >
-                                Delete
-                              </button>
-
-                            </td>
-                          )}
-
-                        </tr>
-                      ))}
-
-                    </tbody>
-
-                  </table>
-
-                </div>
-              )}
-
-            </div>
-
-          </section>
-        )}
-
-        {/* CREATE EVENT */}
-
-        {page === 'create-event' && isAdmin && (
-          <section>
-
-            <div className="page-header">
-
-              <div>
-                <span className="eyebrow">
-                  EVENT MANAGEMENT
-                </span>
-
-                <h2>
-                  Create New Event
-                </h2>
-
-                <p>
-                  Add a new event to the county management system.
-                </p>
-              </div>
-
-            </div>
-
-            <form
-              className="form-card"
-              onSubmit={createEvent}
-            >
-
-              <div className="form-title">
-
-                <div className="form-title-icon">
-                  ▣
-                </div>
-
-                <div>
-                  <h3>
-                    Event Information
-                  </h3>
-
-                  <p>
-                    Enter the details of the new event.
-                  </p>
-                </div>
-
-              </div>
-
-              <div className="form-grid">
-
-                <div className="form-group full-width">
-                  <label>
-                    Event Name *
-                  </label>
-
-                  <input
-                    type="text"
-                    value={eventForm.name}
-                    onChange={(e) =>
-                      setEventForm({
-                        ...eventForm,
-                        name: e.target.value,
-                      })
-                    }
-                    placeholder="e.g. County Staff Meeting"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Date *</label>
-
-                  <input
-                    type="date"
-                    value={eventForm.date}
-                    onChange={(e) =>
-                      setEventForm({
-                        ...eventForm,
-                        date: e.target.value,
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Time *</label>
-
-                  <input
-                    type="time"
-                    value={eventForm.time}
-                    onChange={(e) =>
-                      setEventForm({
-                        ...eventForm,
-                        time: e.target.value,
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="form-group full-width">
-                  <label>Venue *</label>
-
-                  <input
-                    type="text"
-                    value={eventForm.venue}
-                    onChange={(e) =>
-                      setEventForm({
-                        ...eventForm,
-                        venue: e.target.value,
-                      })
-                    }
-                    placeholder="e.g. County Headquarters"
-                    required
-                  />
-                </div>
-
-                <div className="form-group full-width">
-                  <label>
-                    Description
-                  </label>
-
-                  <textarea
-                    value={eventForm.description}
-                    onChange={(e) =>
-                      setEventForm({
-                        ...eventForm,
-                        description: e.target.value,
-                      })
-                    }
-                    placeholder="Enter additional information..."
-                    rows={5}
-                  />
-                </div>
-
-              </div>
-
-              <div className="form-actions">
-
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() =>
-                    navigate('events')
-                  }
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  className="primary-button"
-                >
-                  Create Event
-                </button>
-
-              </div>
-
-            </form>
-
-          </section>
-        )}
-
-        {/* MEETINGS */}
-
-        {page === 'meetings' && (
-          <section>
-
-            <div className="page-header">
-
-              <div>
-                <span className="eyebrow">
-                  MEETING MANAGEMENT
-                </span>
-
-                <h2>
-                  County Meetings
-                </h2>
-
-                <p>
-                  Schedule and manage county meetings.
-                </p>
-              </div>
-
-              {isAdmin && (
-                <button
-                  className="primary-button"
-                  onClick={() =>
-                    navigate('create-meeting')
-                  }
-                >
-                  + Create Meeting
-                </button>
-              )}
-
-            </div>
-
-            <div className="panel">
-
-              {loading ? (
-                <div className="loading-state">
-                  Loading meetings...
-                </div>
-              ) : meetings.length === 0 ? (
-                <div className="empty-state">
-
-                  <div>▤</div>
-
-                  <h4>
-                    No meetings found
-                  </h4>
-
-                  <p>
-                    {isAdmin
-                      ? 'Create a meeting to begin scheduling.'
-                      : 'No meetings have been registered.'}
-                  </p>
-
-                </div>
-              ) : (
-                <div className="table-container">
-
-                  <table>
-
-                    <thead>
-                      <tr>
-                        <th>Meeting</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Venue</th>
-
-                        {isAdmin && (
-                          <th>Action</th>
-                        )}
-                      </tr>
-                    </thead>
-
-                    <tbody>
-
-                      {meetings.map((meeting) => (
-                        <tr
-                          key={
-                            meeting.id ??
-                            meeting.title
-                          }
-                        >
-
-                          <td>
-                            <strong>
-                              {meeting.title}
-                            </strong>
-
-                            {meeting.description && (
-                              <small>
-                                {meeting.description}
-                              </small>
-                            )}
-                          </td>
-
-                          <td>
-                            {meeting.date}
-                          </td>
-
-                          <td>
-                            {meeting.time}
-                          </td>
-
-                          <td>
-                            {meeting.venue}
-                          </td>
-
-                          {isAdmin && (
-                            <td>
-
-                              <button
-                                className="secondary-button"
-                                onClick={() =>
-                                  editMeeting(
-                                    meeting,
-                                  )
-                                }
-                              >
-                                Edit
-                              </button>
-
-                              <button
-                                className="delete-button"
-                                onClick={() =>
-                                  deleteMeeting(
-                                    meeting.id,
-                                  )
-                                }
-                              >
-                                Delete
-                              </button>
-
-                            </td>
-                          )}
-
-                        </tr>
-                      ))}
-
-                    </tbody>
-
-                  </table>
-
-                </div>
-              )}
-
-            </div>
-
-          </section>
-        )}
-
-        {/* CREATE MEETING */}
-
-        {page === 'create-meeting' && isAdmin && (
-          <section>
-
-            <div className="page-header">
-
-              <div>
-                <span className="eyebrow">
-                  MEETING MANAGEMENT
-                </span>
-
-                <h2>
-                  Create New Meeting
-                </h2>
-
-                <p>
-                  Schedule a new county meeting.
-                </p>
-              </div>
-
-            </div>
-
-            <form
-              className="form-card"
-              onSubmit={createMeeting}
-            >
-
-              <div className="form-title">
-
-                <div className="form-title-icon">
-                  ▤
-                </div>
-
-                <div>
-                  <h3>
-                    Meeting Information
-                  </h3>
-
-                  <p>
-                    Enter the details of the meeting.
-                  </p>
-                </div>
-
-              </div>
-
-              <div className="form-grid">
-
-                <div className="form-group full-width">
-                  <label>
-                    Meeting Title *
-                  </label>
-
-                  <input
-                    type="text"
-                    value={meetingForm.title}
-                    onChange={(e) =>
-                      setMeetingForm({
-                        ...meetingForm,
-                        title: e.target.value,
-                      })
-                    }
-                    placeholder="e.g. Department Planning Meeting"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Date *</label>
-
-                  <input
-                    type="date"
-                    value={meetingForm.date}
-                    onChange={(e) =>
-                      setMeetingForm({
-                        ...meetingForm,
-                        date: e.target.value,
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Time *</label>
-
-                  <input
-                    type="time"
-                    value={meetingForm.time}
-                    onChange={(e) =>
-                      setMeetingForm({
-                        ...meetingForm,
-                        time: e.target.value,
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="form-group full-width">
-                  <label>Venue *</label>
-
-                  <input
-                    type="text"
-                    value={meetingForm.venue}
-                    onChange={(e) =>
-                      setMeetingForm({
-                        ...meetingForm,
-                        venue: e.target.value,
-                      })
-                    }
-                    placeholder="e.g. County Boardroom"
-                    required
-                  />
-                </div>
-
-                <div className="form-group full-width">
-                  <label>
-                    Description
-                  </label>
-
-                  <textarea
-                    value={meetingForm.description}
-                    onChange={(e) =>
-                      setMeetingForm({
-                        ...meetingForm,
-                        description: e.target.value,
-                      })
-                    }
-                    placeholder="Enter meeting description..."
-                    rows={5}
-                  />
-                </div>
-
-              </div>
-
-              <div className="form-actions">
-
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() =>
-                    navigate('meetings')
-                  }
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  className="primary-button"
-                >
-                  Create Meeting
-                </button>
-
-              </div>
-
-            </form>
-
-          </section>
-        )}
-
-        {/* ATTENDANCE */}
-
-        {page === 'attendance' && (
-          <section>
-
-            <div className="page-header">
-
-              <div>
-                <span className="eyebrow">
-                  ATTENDANCE MANAGEMENT
-                </span>
-
-                <h2>
-                  Meeting Attendance
-                </h2>
-
-                <p>
-                  Record and monitor attendance for county meetings.
-                </p>
-              </div>
-
-            </div>
-
-            <div className="attendance-layout">
-
-              {isAdmin && (
-                <form
-                  className="form-card attendance-form"
-                  onSubmit={recordAttendance}
-                >
-
-                  <div className="form-title">
-
-                    <div className="form-title-icon">
-                      ✓
-                    </div>
-
-                    <div>
-                      <h3>
-                        Record Attendance
-                      </h3>
-
-                      <p>
-                        Add an attendee to a meeting.
-                      </p>
-                    </div>
-
-                  </div>
-
-                  <div className="form-group">
-
-                    <label>
-                      Meeting *
-                    </label>
-
-                    <select
-                      value={
-                        attendanceForm.meeting_id
-                      }
-                      onChange={(e) =>
-                        setAttendanceForm({
-                          ...attendanceForm,
-                          meeting_id:
-                            e.target.value,
-                        })
-                      }
-                      required
-                    >
-
-                      <option value="">
-                        Select meeting
-                      </option>
-
-                      {meetings.map((meeting) => (
-                        <option
-                          key={meeting.id}
-                          value={meeting.id}
-                        >
-                          {meeting.title}
-                        </option>
-                      ))}
-
-                    </select>
-
-                  </div>
-
-                  <div className="form-group">
-
-                    <label>
-                      Attendee Name *
-                    </label>
-
-                    <input
-                      type="text"
-                      value={
-                        attendanceForm.attendee_name
-                      }
-                      onChange={(e) =>
-                        setAttendanceForm({
-                          ...attendanceForm,
-                          attendee_name:
-                            e.target.value,
-                        })
-                      }
-                      placeholder="Enter attendee name"
-                      required
-                    />
-
-                  </div>
-
-                  <div className="form-group">
-
-                    <label>
-                      Status *
-                    </label>
-
-                    <select
-                      value={
-                        attendanceForm.status
-                      }
-                      onChange={(e) =>
-                        setAttendanceForm({
-                          ...attendanceForm,
-                          status:
-                            e.target.value,
-                        })
-                      }
-                    >
-                      <option value="present">
-                        Present
-                      </option>
-
-                      <option value="absent">
-                        Absent
-                      </option>
-                    </select>
-
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="primary-button full-button"
-                  >
-                    Record Attendance
-                  </button>
-
-                </form>
-              )}
-
-              <div className="panel attendance-list">
-
-                <div className="panel-heading">
-
-                  <div>
-                    <span className="section-label">
-                      ATTENDANCE RECORDS
-                    </span>
-
-                    <h3>
-                      Recent Attendance
-                    </h3>
-                  </div>
-
-                  <div className="attendance-summary">
-
-                    <span className="present-pill">
-                      {presentCount} Present
-                    </span>
-
-                    <span className="absent-pill">
-                      {absentCount} Absent
-                    </span>
-
-                  </div>
-
-                </div>
-
-                {attendance.length === 0 ? (
-                  <div className="empty-state compact">
-
-                    <div>✓</div>
-
-                    <h4>
-                      No attendance records
-                    </h4>
-
-                    <p>
-                      Attendance records will appear here.
-                    </p>
-
-                  </div>
-                ) : (
-                  <div className="attendance-records">
-
-                    {attendance.map((record) => {
-
-                      const meetingName =
-                        record.meeting?.title ||
-                        meetings.find(
-                          (meeting) =>
-                            meeting.id ===
-                            record.meeting_id,
-                        )?.title ||
-                        `Meeting #${record.meeting_id}`
-
-                      return (
-                        <div
-                          className="attendance-record"
-                          key={record.id}
-                        >
-
-                          <div className="attendee-avatar">
-                            {record.attendee_name
-                              .charAt(0)
-                              .toUpperCase()}
-                          </div>
-
-                          <div className="attendee-info">
-
-                            <strong>
-                              {record.attendee_name}
-                            </strong>
-
-                            <span>
-                              {meetingName}
-                            </span>
-
-                          </div>
-
-                          <span
-                            className={`attendance-status ${record.status}`}
-                          >
-                            {record.status ===
-                            'present'
-                              ? 'Present'
-                              : 'Absent'}
-                          </span>
-
-                          {isAdmin && (
-                            <>
-                              <button
-                                className="secondary-button"
-                                onClick={() =>
-                                  editAttendance(
-                                    record,
-                                  )
-                                }
-                              >
-                                Edit
-                              </button>
-
-                              <button
-                                className="small-delete"
-                                onClick={() =>
-                                  deleteAttendance(
-                                    record.id,
-                                  )
-                                }
-                              >
-                                ×
-                              </button>
-                            </>
-                          )}
-
-                        </div>
-                      )
-                    })}
-
-                  </div>
-                )}
-
-              </div>
-
-            </div>
-
-          </section>
-        )}
-
-        {/* NOTIFICATIONS */}
-
-        {page === 'notifications' && (
-          <section>
-
-            <div className="page-header">
-
-              <div>
-                <span className="eyebrow">
-                  COMMUNICATIONS
-                </span>
-
-                <h2>
-                  Notifications
-                </h2>
-
-                <p>
-                  Stay informed about county activities.
-                </p>
-              </div>
-
-            </div>
-
-            <div className="notification-grid">
-
-              <div className="notification-card">
-
-                <div className="notification-icon green-notification">
-                  ✓
-                </div>
-
-                <div>
-
-                  <span className="notification-time">
-                    SYSTEM
-                  </span>
-
-                  <h3>
-                    System is operational
-                  </h3>
-
-                  <p>
-                    The Events & Meetings Management
-                    System is currently running normally.
-                  </p>
-
-                </div>
-
-              </div>
-
-              <div className="notification-card">
-
-                <div className="notification-icon orange-notification">
-                  !
-                </div>
-
-                <div>
-
-                  <span className="notification-time">
-                    MEETINGS
-                  </span>
-
-                  <h3>
-                    Meeting management
-                  </h3>
-
-                  <p>
-                    Remember to record attendance
-                    after every county meeting.
-                  </p>
-
-                </div>
-
-              </div>
-
-              <div className="notification-card">
-
-                <div className="notification-icon blue-notification">
-                  ▣
-                </div>
-
-                <div>
-
-                  <span className="notification-time">
-                    EVENTS
-                  </span>
-
-                  <h3>
-                    Event planning
-                  </h3>
-
-                  <p>
-                    Keep event information updated
-                    so county activities remain organised.
-                  </p>
-
-                </div>
-
-              </div>
-
-            </div>
-
-            <div className="panel notification-info">
-
-              <div className="large-notification-icon">
-                🔔
-              </div>
-
-              <div>
-
-                <h3>
-                  Centralised County Communication
-                </h3>
-
-                <p>
-                  This section provides a central place
-                  for system messages, reminders and
-                  important county management information.
-                </p>
-
-              </div>
-
-            </div>
-
-          </section>
-        )}
-
-        {/* REPORTS */}
-
-        {page === 'reports' && (
-          <section>
-
-            <div className="page-header">
-
-              <div>
-                <span className="eyebrow">
-                  REPORTING & ANALYTICS
-                </span>
-
-                <h2>
-                  System Reports
-                </h2>
-
-                <p>
-                  Review county events, meetings and attendance data.
-                </p>
-              </div>
-
-              <button
-                className="secondary-button"
-                onClick={loadData}
-              >
-                ↻ Refresh Data
-              </button>
-
-            </div>
-
-            <div className="report-stats">
-
-              <div className="report-stat">
-                <span>Total Events</span>
                 <strong>
                   {events.length}
                 </strong>
               </div>
 
-              <div className="report-stat">
-                <span>Total Meetings</span>
+              <div className="stat-card">
+                <span>
+                  Meetings
+                </span>
+
                 <strong>
                   {meetings.length}
                 </strong>
               </div>
 
-              <div className="report-stat">
-                <span>Attendance</span>
-                <strong>
-                  {attendance.length}
-                </strong>
-              </div>
+              <div className="stat-card">
+                <span>
+                  Present
+                </span>
 
-              <div className="report-stat">
-                <span>Present</span>
                 <strong>
                   {presentCount}
                 </strong>
               </div>
 
-              <div className="report-stat">
-                <span>Absent</span>
+              <div className="stat-card">
+                <span>
+                  Absent
+                </span>
+
                 <strong>
                   {absentCount}
                 </strong>
@@ -2579,131 +3079,80 @@ setMeetings((current) => [
 
             </div>
 
-            <div className="report-grid">
+            <div className="dashboard-grid">
 
               <div className="panel">
 
                 <div className="panel-heading">
-
-                  <div>
-                    <span className="section-label">
-                      ATTENDANCE
-                    </span>
-
-                    <h3>
-                      Attendance Report
-                    </h3>
-                  </div>
-
+                  <h2>
+                    Quick Actions
+                  </h2>
                 </div>
 
-                {attendance.length === 0 ? (
-                  <div className="empty-state compact">
-                    <p>
-                      No attendance data available.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="report-list">
+                <div className="quick-actions button-grid">
 
-                    {attendance.map((record) => {
+                  <button
+                    onClick={() =>
+                      navigate('events')
+                    }
+                  >
+                    View Events
+                  </button>
 
-                      const meetingName =
-                        record.meeting?.title ||
-                        meetings.find(
-                          (meeting) =>
-                            meeting.id ===
-                            record.meeting_id,
-                        )?.title ||
-                        `Meeting #${record.meeting_id}`
+                  <button
+                    onClick={() =>
+                      navigate('meetings')
+                    }
+                  >
+                    View Meetings
+                  </button>
 
-                      return (
-                        <div
-                          className="report-list-item"
-                          key={record.id}
-                        >
-
-                          <div>
-                            <strong>
-                              {record.attendee_name}
-                            </strong>
-
-                            <span>
-                              {meetingName}
-                            </span>
-                          </div>
-
-                          <span
-                            className={`attendance-status ${record.status}`}
-                          >
-                            {record.status}
-                          </span>
-
-                        </div>
+                  <button
+                    onClick={() =>
+                      navigate(
+                        'attendance',
                       )
-                    })}
+                    }
+                  >
+                    View Attendance
+                  </button>
 
-                  </div>
-                )}
+                  <button
+                    onClick={() =>
+                      navigate(
+                        'reports',
+                      )
+                    }
+                  >
+                    View Reports
+                  </button>
 
+                </div>
               </div>
 
               <div className="panel">
 
                 <div className="panel-heading">
-
-                  <div>
-                    <span className="section-label">
-                      EVENTS
-                    </span>
-
-                    <h3>
-                      Events Report
-                    </h3>
-                  </div>
-
+                  <h2>
+                    System Access
+                  </h2>
                 </div>
 
-                {events.length === 0 ? (
-                  <div className="empty-state compact">
-                    <p>
-                      No event data available.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="report-list">
+                <p>
+                  <strong>
+                    {user.name}
+                  </strong>{' '}
+                  is signed in as{' '}
+                  <strong>
+                    {user.role}
+                  </strong>.
+                </p>
 
-                    {events.map((event) => (
-                      <div
-                        className="report-list-item"
-                        key={
-                          event.id ??
-                          event.name
-                        }
-                      >
-
-                        <div>
-
-                          <strong>
-                            {event.name}
-                          </strong>
-
-                          <span>
-                            {event.date} •{' '}
-                            {event.venue}
-                          </span>
-
-                        </div>
-
-                        <span className="status-badge upcoming">
-                          Event
-                        </span>
-
-                      </div>
-                    ))}
-
-                  </div>
-                )}
+                <p>
+                  {canManageMeetings
+                    ? 'Your permissions allow you to manage authorised meetings and related records.'
+                    : 'Your account has view-focused access to the functions assigned to your role.'}
+                </p>
 
               </div>
 
@@ -2713,68 +3162,1547 @@ setMeetings((current) => [
 
               <div className="panel-heading">
 
-                <div>
-                  <span className="section-label">
-                    MEETINGS
-                  </span>
+                <h2>
+                  Recent Events
+                </h2>
 
-                  <h3>
-                    Meetings Report
-                  </h3>
-                </div>
+                <button
+                  onClick={() =>
+                    navigate('events')
+                  }
+                >
+                  View all
+                </button>
 
               </div>
 
-              {meetings.length === 0 ? (
-                <div className="empty-state compact">
-                  <p>
-                    No meeting data available.
-                  </p>
-                </div>
+              {events.length === 0 ? (
+                <p className="empty-state">
+                  No events have been
+                  created yet.
+                </p>
               ) : (
-                <div className="table-container">
+                <div className="table-wrapper">
 
                   <table>
 
                     <thead>
                       <tr>
-                        <th>Meeting</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Venue</th>
+                        <th>
+                          Event
+                        </th>
+                        <th>
+                          Date
+                        </th>
+                        <th>
+                          Time
+                        </th>
+                        <th>
+                          Venue
+                        </th>
                       </tr>
                     </thead>
 
                     <tbody>
 
-                      {meetings.map((meeting) => (
-                        <tr
-                          key={
-                            meeting.id ??
-                            meeting.title
-                          }
-                        >
+                      {events
+                        .slice(0, 5)
+                        .map((event) => (
+                          <tr
+                            key={
+                              event.id ??
+                              `${event.name}-${event.date}`
+                            }
+                          >
+                            <td>
+                              {event.name}
+                            </td>
 
-                          <td>
-                            <strong>
-                              {meeting.title}
-                            </strong>
-                          </td>
+                            <td>
+                              {event.date}
+                            </td>
 
-                          <td>
-                            {meeting.date}
-                          </td>
+                            <td>
+                              {event.time}
+                            </td>
 
-                          <td>
-                            {meeting.time}
-                          </td>
+                            <td>
+                              {event.venue}
+                            </td>
+                          </tr>
+                        ))}
 
-                          <td>
-                            {meeting.venue}
-                          </td>
+                    </tbody>
 
-                        </tr>
-                      ))}
+                  </table>
+
+                </div>
+              )}
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ====================================================
+            EVENTS
+        ==================================================== */}
+
+        {page === 'events' && (
+          <section>
+
+            <div className="page-heading">
+
+              <div>
+
+                <p className="eyebrow">
+                  Management
+                </p>
+
+                <h1>
+                  Events
+                </h1>
+
+                <p>
+                  View county events and
+                  their schedules.
+                </p>
+
+              </div>
+
+              {can(
+                'meetings.create',
+              ) && (
+                <div className="page-heading-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        'create-event',
+                      )
+                    }
+                  >
+                    + Create Event
+                  </button>
+                </div>
+              )}
+
+            </div>
+
+            <div className="panel">
+
+              {events.length === 0 ? (
+                <p className="empty-state">
+                  No events available.
+                </p>
+              ) : (
+                <div className="table-wrapper">
+
+                  <table>
+
+                    <thead>
+
+                      <tr>
+
+                        <th>
+                          Name
+                        </th>
+
+                        <th>
+                          Date
+                        </th>
+
+                        <th>
+                          Time
+                        </th>
+
+                        <th>
+                          Venue
+                        </th>
+
+                        {can(
+                          'meetings.update',
+                        ) && (
+                          <th>
+                            Actions
+                          </th>
+                        )}
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                      {events.map(
+                        (event) => (
+                          <tr
+                            key={
+                              event.id ??
+                              `${event.name}-${event.date}`
+                            }
+                          >
+
+                            <td>
+
+                              <strong>
+                                {event.name}
+                              </strong>
+
+                              {event.description && (
+                                <small>
+                                  {
+                                    event.description
+                                  }
+                                </small>
+                              )}
+
+                            </td>
+
+                            <td>
+                              {event.date}
+                            </td>
+
+                            <td>
+                              {event.time}
+                            </td>
+
+                            <td>
+                              {event.venue}
+                            </td>
+
+                            {can(
+                              'meetings.update',
+                            ) && (
+                              <td className="actions"><div className="table-action-buttons">
+
+                                <button
+                                  onClick={() =>
+                                    editEvent(
+                                      event,
+                                    )
+                                  }
+                                >
+                                  Edit
+                                </button>
+
+                                <button
+                                  className="danger"
+                                  onClick={() =>
+                                    deleteEvent(
+                                      event.id,
+                                    )
+                                  }
+                                >
+                                  Delete
+                                </button>
+
+                              </div></td>
+                            )}
+
+                          </tr>
+                        ),
+                      )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+              )}
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ====================================================
+            CREATE EVENT
+        ==================================================== */}
+
+        {page ===
+          'create-event' &&
+          can('meetings.create') && (
+            <section>
+
+              <div className="page-heading">
+
+                <div>
+
+                  <p className="eyebrow">
+                    Administrator
+                  </p>
+
+                  <h1>
+                    Create Event
+                  </h1>
+
+                  <p>
+                    Add a new county event.
+                  </p>
+
+                </div>
+
+              </div>
+
+              <form
+                className="form-panel"
+                onSubmit={createEvent}
+              >
+
+                <label>
+                  Event Name
+                </label>
+
+                <input
+                  value={
+                    eventForm.name
+                  }
+                  onChange={(e) =>
+                    setEventForm({
+                      ...eventForm,
+                      name:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Event name"
+                  required
+                />
+
+                <div className="form-grid">
+
+                  <div>
+
+                    <label>
+                      Date
+                    </label>
+
+                    <input
+                      type="date"
+                      value={
+                        eventForm.date
+                      }
+                      onChange={(e) =>
+                        setEventForm({
+                          ...eventForm,
+                          date:
+                            e.target.value,
+                        })
+                      }
+                      required
+                    />
+
+                  </div>
+
+                  <div>
+
+                    <label>
+                      Time
+                    </label>
+
+                    <input
+                      type="time"
+                      value={
+                        eventForm.time
+                      }
+                      onChange={(e) =>
+                        setEventForm({
+                          ...eventForm,
+                          time:
+                            e.target.value,
+                        })
+                      }
+                      required
+                    />
+
+                  </div>
+
+                </div>
+
+                <label>
+                  Venue
+                </label>
+
+                <input
+                  value={
+                    eventForm.venue
+                  }
+                  onChange={(e) =>
+                    setEventForm({
+                      ...eventForm,
+                      venue:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Venue"
+                  required
+                />
+
+                <label>
+                  Description
+                </label>
+
+                <textarea
+                  value={
+                    eventForm.description
+                  }
+                  onChange={(e) =>
+                    setEventForm({
+                      ...eventForm,
+                      description:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Event description"
+                  rows={4}
+                />
+
+                <div className="form-actions">
+
+                  <button type="submit">
+                    Create Event
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      navigate(
+                        'events',
+                      )
+                    }
+                  >
+                    Cancel
+                  </button>
+
+                </div>
+
+              </form>
+
+            </section>
+          )}
+
+        {/* ====================================================
+            MEETINGS
+        ==================================================== */}
+
+        {page === 'meetings' && (
+          <section>
+
+            <div className="page-heading">
+
+              <div>
+
+                <p className="eyebrow">
+                  Management
+                </p>
+
+                <h1>
+                  Meetings
+                </h1>
+
+                <p>
+                  View scheduled county
+                  meetings.
+                </p>
+
+              </div>
+
+              {can(
+                'meetings.create',
+              ) && (
+                <div className="page-heading-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        'create-meeting',
+                      )
+                    }
+                  >
+                    + Create Meeting
+                  </button>
+                </div>
+              )}
+
+            </div>
+
+            <div className="panel">
+
+              {meetings.length === 0 ? (
+                <p className="empty-state">
+                  No meetings available.
+                </p>
+              ) : (
+                <div className="table-wrapper">
+
+                  <table>
+
+                    <thead>
+
+                      <tr>
+
+                        <th>
+                          Meeting
+                        </th>
+
+                        <th>
+                          Date
+                        </th>
+
+                        <th>
+                          Time
+                        </th>
+
+                        <th>
+                          Venue
+                        </th>
+
+                        {can(
+                          'meetings.update',
+                        ) && (
+                          <th>
+                            Actions
+                          </th>
+                        )}
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                      {meetings.map(
+                        (meeting) => (
+                          <tr
+                            key={
+                              meeting.id ??
+                              `${meeting.title}-${meeting.date}-${meeting.time}`
+                            }
+                          >
+
+                            <td>
+
+                              <strong>
+                                {
+                                  meeting.title
+                                }
+                              </strong>
+
+                              {meeting.description && (
+                                <small>
+                                  {
+                                    meeting.description
+                                  }
+                                </small>
+                              )}
+
+                            </td>
+
+                            <td>
+                              {meeting.date}
+                            </td>
+
+                            <td>
+                              {meeting.time}
+                            </td>
+
+                            <td>
+                              {meeting.venue}
+                            </td>
+
+                            {can(
+                              'meetings.update',
+                            ) && (
+                              <td className="actions"><div className="table-action-buttons">
+
+                                <button
+                                  onClick={() =>
+                                    editMeeting(
+                                      meeting,
+                                    )
+                                  }
+                                >
+                                  Edit
+                                </button>
+
+                                <button
+                                  className="danger"
+                                  onClick={() =>
+                                    deleteMeeting(
+                                      meeting.id,
+                                    )
+                                  }
+                                >
+                                  Delete
+                                </button>
+
+                              </div></td>
+                            )}
+
+                          </tr>
+                        ),
+                      )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+              )}
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ====================================================
+            CREATE MEETING
+        ==================================================== */}
+
+        {page ===
+          'create-meeting' &&
+          can('meetings.create') && (
+            <section>
+
+              <div className="page-heading">
+
+                <div>
+
+                  <p className="eyebrow">
+                    Administrator
+                  </p>
+
+                  <h1>
+                    Create Meeting
+                  </h1>
+
+                  <p>
+                    Schedule a new county
+                    meeting.
+                  </p>
+
+                </div>
+
+              </div>
+
+              <form
+                className="form-panel"
+                onSubmit={createMeeting}
+              >
+
+                <label>
+                  Meeting Title
+                </label>
+
+                <input
+                  value={
+                    meetingForm.title
+                  }
+                  onChange={(e) =>
+                    setMeetingForm({
+                      ...meetingForm,
+                      title:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Meeting title"
+                  required
+                />
+
+                <div className="form-grid">
+
+                  <div>
+
+                    <label>
+                      Date
+                    </label>
+
+                    <input
+                      type="date"
+                      value={
+                        meetingForm.date
+                      }
+                      onChange={(e) =>
+                        setMeetingForm({
+                          ...meetingForm,
+                          date:
+                            e.target.value,
+                        })
+                      }
+                      required
+                    />
+
+                  </div>
+
+                  <div>
+
+                    <label>
+                      Time
+                    </label>
+
+                    <input
+                      type="time"
+                      value={
+                        meetingForm.time
+                      }
+                      onChange={(e) =>
+                        setMeetingForm({
+                          ...meetingForm,
+                          time:
+                            e.target.value,
+                        })
+                      }
+                      required
+                    />
+
+                  </div>
+
+                </div>
+
+                <label>
+                  Venue
+                </label>
+
+                <input
+                  value={
+                    meetingForm.venue
+                  }
+                  onChange={(e) =>
+                    setMeetingForm({
+                      ...meetingForm,
+                      venue:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Meeting venue"
+                  required
+                />
+
+                <label>
+                  Description
+                </label>
+
+                <textarea
+                  value={
+                    meetingForm.description
+                  }
+                  onChange={(e) =>
+                    setMeetingForm({
+                      ...meetingForm,
+                      description:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Meeting description"
+                  rows={4}
+                />
+
+                <div className="form-actions">
+
+                  <button type="submit">
+                    Create Meeting
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      navigate(
+                        'meetings',
+                      )
+                    }
+                  >
+                    Cancel
+                  </button>
+
+                </div>
+
+              </form>
+
+            </section>
+          )}
+
+        {/* ====================================================
+            ATTENDANCE
+        ==================================================== */}
+
+        {page === 'attendance' && (
+          <section>
+
+            <div className="page-heading">
+
+              <div>
+
+                <p className="eyebrow">
+                  Records
+                </p>
+
+                <h1>
+                  Attendance
+                </h1>
+
+                <p>
+                  View meeting attendance
+                  records.
+                </p>
+
+              </div>
+
+            </div>
+
+            {can(
+              'attendance.capture',
+            ) && (
+              <form
+                className="form-panel"
+                onSubmit={
+                  recordAttendance
+                }
+              >
+
+                <h2>
+                  Record Attendance
+                </h2>
+
+                <label>
+                  Meeting
+                </label>
+
+                <select
+                  value={
+                    attendanceForm.meeting_id
+                  }
+                  onChange={(e) =>
+                    setAttendanceForm({
+                      ...attendanceForm,
+                      meeting_id:
+                        e.target.value,
+                    })
+                  }
+                  required
+                >
+
+                  <option value="">
+                    Select a meeting
+                  </option>
+
+                  {meetings.map(
+                    (meeting) => (
+                      <option
+                        key={meeting.id}
+                        value={meeting.id}
+                      >
+                        {meeting.title} —{' '}
+                        {meeting.date}
+                      </option>
+                    ),
+                  )}
+
+                </select>
+
+                <label>
+                  Attendee Name
+                </label>
+
+                <input
+                  value={
+                    attendanceForm.attendee_name
+                  }
+                  onChange={(e) =>
+                    setAttendanceForm({
+                      ...attendanceForm,
+                      attendee_name:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Attendee name"
+                  required
+                />
+
+                <label>
+                  Status
+                </label>
+
+                <select
+                  value={
+                    attendanceForm.status
+                  }
+                  onChange={(e) =>
+                    setAttendanceForm({
+                      ...attendanceForm,
+                      status:
+                        e.target.value as
+                          | 'present'
+                          | 'absent',
+                    })
+                  }
+                >
+
+                  <option value="present">
+                    Present
+                  </option>
+
+                  <option value="absent">
+                    Absent
+                  </option>
+
+                </select>
+
+                <button type="submit">
+                  Record Attendance
+                </button>
+
+              </form>
+            )}
+
+            <div className="stats-grid">
+
+              <div className="stat-card">
+
+                <span>
+                  Total Records
+                </span>
+
+                <strong>
+                  {attendance.length}
+                </strong>
+
+              </div>
+
+              <div className="stat-card">
+
+                <span>
+                  Present
+                </span>
+
+                <strong>
+                  {presentCount}
+                </strong>
+
+              </div>
+
+              <div className="stat-card">
+
+                <span>
+                  Absent
+                </span>
+
+                <strong>
+                  {absentCount}
+                </strong>
+
+              </div>
+
+            </div>
+
+            <div className="panel">
+
+              {attendance.length === 0 ? (
+                <p className="empty-state">
+                  No attendance records
+                  available.
+                </p>
+              ) : (
+                <div className="table-wrapper">
+
+                  <table>
+
+                    <thead>
+
+                      <tr>
+
+                        <th>
+                          Meeting
+                        </th>
+
+                        <th>
+                          Attendee
+                        </th>
+
+                        <th>
+                          Status
+                        </th>
+
+                        {can(
+                          'attendance.correct',
+                        ) && (
+                          <th>
+                            Actions
+                          </th>
+                        )}
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                      {attendance.map(
+                        (record) => {
+
+                          const meeting =
+                            meetings.find(
+                              (item) =>
+                                item.id ===
+                                record.meeting_id,
+                            )
+
+                          return (
+                            <tr
+                              key={
+                                record.id ??
+                                `${record.meeting_id}-${record.attendee_name}`
+                              }
+                            >
+
+                              <td>
+                                {record.meeting
+                                  ?.title ??
+                                  meeting?.title ??
+                                  `Meeting #${record.meeting_id}`}
+                              </td>
+
+                              <td>
+                                {
+                                  record.attendee_name
+                                }
+                              </td>
+
+                              <td>
+
+                                <span
+                                  className={`status ${record.status}`}
+                                >
+                                  {
+                                    record.status
+                                  }
+                                </span>
+
+                              </td>
+
+                              {can(
+                                'attendance.correct',
+                              ) && (
+                                <td className="actions"><div className="table-action-buttons">
+
+                                  <button
+                                    onClick={() =>
+                                      editAttendance(
+                                        record,
+                                      )
+                                    }
+                                  >
+                                    Edit
+                                  </button>
+
+                                  <button
+                                    className="danger"
+                                    onClick={() =>
+                                      deleteAttendance(
+                                        record.id,
+                                      )
+                                    }
+                                  >
+                                    Delete
+                                  </button>
+
+                                </div></td>
+                              )}
+
+                            </tr>
+                          )
+                        },
+                      )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+              )}
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ====================================================
+            NOTIFICATIONS
+        ==================================================== */}
+
+        {page ===
+          'notifications' && (
+          <section>
+
+            <div className="page-heading">
+
+              <div>
+
+                <p className="eyebrow">
+                  Information
+                </p>
+
+                <h1>
+                  Notifications
+                </h1>
+
+                <p>
+                  Important system and
+                  meeting notifications.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="notification-list">
+
+              <div className="notification-card">
+
+                <strong>
+                  Meeting updates
+                </strong>
+
+                <p>
+                  Check the Meetings
+                  section regularly for
+                  the latest county meeting
+                  schedules.
+                </p>
+
+              </div>
+
+              <div className="notification-card">
+
+                <strong>
+                  Attendance
+                </strong>
+
+                <p>
+                  Attendance records are
+                  available to authorized
+                  users through the
+                  Attendance section.
+                </p>
+
+              </div>
+
+              <div className="notification-card">
+
+                <strong>
+                  Access control
+                </strong>
+
+                <p>
+                  Administrator permissions
+                  are required to create,
+                  edit or delete records.
+                </p>
+
+              </div>
+
+              <div className="notification-card">
+
+                <strong>
+                  Employee verification
+                </strong>
+
+                <p>
+                  Government employees can
+                  verify their registered
+                  email using a six-digit
+                  OTP.
+                </p>
+
+              </div>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ====================================================
+            ACCOUNT
+        ==================================================== */}
+
+        {page === 'account' && (
+          <section>
+
+            <div className="page-heading">
+
+              <div>
+
+                <p className="eyebrow">
+                  Profile
+                </p>
+
+                <h1>
+                  My Account
+                </h1>
+
+                <p>
+                  View your county employee
+                  account and access level.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="dashboard-grid">
+
+              <div className="panel">
+
+                <div className="panel-heading">
+                  <h2>
+                    Personal Information
+                  </h2>
+                </div>
+
+                <div className="profile-details">
+
+                  <div>
+                    <span>
+                      Name
+                    </span>
+
+                    <strong>
+                      {user.name}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>
+                      Email
+                    </span>
+
+                    <strong>
+                      {user.email}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>
+                      Department
+                    </span>
+
+                    <strong>
+                      {user.department ??
+                        'Not assigned'}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>
+                      Position
+                    </span>
+
+                    <strong>
+                      {user.position ??
+                        'Not assigned'}
+                    </strong>
+                  </div>
+
+                </div>
+
+              </div>
+
+              <div className="panel">
+
+                <div className="panel-heading">
+                  <h2>
+                    Access & Permissions
+                  </h2>
+                </div>
+
+                <p>
+                  <strong>
+                    Role:
+                  </strong>{' '}
+                  {user.role.replaceAll(
+                    '_',
+                    ' ',
+                  )}
+                </p>
+
+                <ul className="permission-list">
+
+                  {(
+                    user.permissions ??
+                    rolePermissions[
+                      user.role
+                    ] ??
+                    []
+                  ).map(
+                    (permission) => (
+                      <li
+                        key={
+                          permission
+                        }
+                      >
+                        {permission}
+                      </li>
+                    ),
+                  )}
+
+                </ul>
+
+              </div>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ====================================================
+            REPORTS
+        ==================================================== */}
+
+        {page === 'reports' && (
+          <section>
+
+            <div className="page-heading">
+
+              <div>
+
+                <p className="eyebrow">
+                  Overview
+                </p>
+
+                <h1>
+                  Reports
+                </h1>
+
+                <p>
+                  Summary of county events,
+                  meetings and attendance.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="stats-grid">
+
+              <div className="stat-card">
+
+                <span>
+                  Total Events
+                </span>
+
+                <strong>
+                  {events.length}
+                </strong>
+
+              </div>
+
+              <div className="stat-card">
+
+                <span>
+                  Total Meetings
+                </span>
+
+                <strong>
+                  {meetings.length}
+                </strong>
+
+              </div>
+
+              <div className="stat-card">
+
+                <span>
+                  Present
+                </span>
+
+                <strong>
+                  {presentCount}
+                </strong>
+
+              </div>
+
+              <div className="stat-card">
+
+                <span>
+                  Absent
+                </span>
+
+                <strong>
+                  {absentCount}
+                </strong>
+
+              </div>
+
+            </div>
+
+            <div className="panel">
+
+              <div className="panel-heading">
+
+                <h2>
+                  Attendance Report
+                </h2>
+
+              </div>
+
+              {attendance.length === 0 ? (
+                <p className="empty-state">
+                  No attendance data
+                  available.
+                </p>
+              ) : (
+                <div className="table-wrapper">
+
+                  <table>
+
+                    <thead>
+
+                      <tr>
+
+                        <th>
+                          Meeting
+                        </th>
+
+                        <th>
+                          Attendee
+                        </th>
+
+                        <th>
+                          Status
+                        </th>
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                      {attendance.map(
+                        (record) => {
+
+                          const meeting =
+                            meetings.find(
+                              (item) =>
+                                item.id ===
+                                record.meeting_id,
+                            )
+
+                          return (
+                            <tr
+                              key={
+                                record.id ??
+                                `${record.meeting_id}-${record.attendee_name}`
+                              }
+                            >
+
+                              <td>
+                                {record.meeting
+                                  ?.title ??
+                                  meeting?.title ??
+                                  `Meeting #${record.meeting_id}`}
+                              </td>
+
+                              <td>
+                                {
+                                  record.attendee_name
+                                }
+                              </td>
+
+                              <td>
+                                {
+                                  record.status
+                                }
+                              </td>
+
+                            </tr>
+                          )
+                        },
+                      )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+              )}
+
+            </div>
+
+            <div className="panel">
+
+              <div className="panel-heading">
+
+                <h2>
+                  Meetings Report
+                </h2>
+
+              </div>
+
+              {meetings.length === 0 ? (
+                <p className="empty-state">
+                  No meetings available.
+                </p>
+              ) : (
+                <div className="table-wrapper">
+
+                  <table>
+
+                    <thead>
+
+                      <tr>
+
+                        <th>
+                          Meeting
+                        </th>
+
+                        <th>
+                          Date
+                        </th>
+
+                        <th>
+                          Time
+                        </th>
+
+                        <th>
+                          Venue
+                        </th>
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                      {meetings.map(
+                        (meeting) => (
+                          <tr
+                            key={
+                              meeting.id ??
+                              `${meeting.title}-${meeting.date}`
+                            }
+                          >
+
+                            <td>
+                              {
+                                meeting.title
+                              }
+                            </td>
+
+                            <td>
+                              {meeting.date}
+                            </td>
+
+                            <td>
+                              {meeting.time}
+                            </td>
+
+                            <td>
+                              {meeting.venue}
+                            </td>
+
+                          </tr>
+                        ),
+                      )}
 
                     </tbody>
 
@@ -2790,24 +4718,13 @@ setMeetings((current) => [
 
       </main>
 
-      {/* FOOTER */}
+      {/* ======================================================
+          FOOTER
+      ====================================================== */}
 
       <footer className="footer">
-
-        <div>
-          <strong>
-            Taita Taveta County
-          </strong>
-
-          <span>
-            Events & Meetings Management System
-          </span>
-        </div>
-
-        <span>
-          © 2026 County Administration
-        </span>
-
+        Taita Taveta County Events &
+        Meetings Management System
       </footer>
 
     </div>
