@@ -60,7 +60,7 @@ type User = {
   permissions?: string[]
 }
 
-const API_URL = 'http://127.0.0.1:8000/api'
+const API_URL = 'https://employee-management-api-u67i.onrender.com/api'
 
 function App() {
   const [user, setUser] = useState<User | null>(() => {
