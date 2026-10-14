@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import PasswordInput from "./PasswordInput";
 import './App.css'
+
 
 type Page =
   | 'dashboard'
@@ -60,7 +62,7 @@ type User = {
   permissions?: string[]
 }
 
-const API_URL = 'https://employee-management-api-u67i.onrender.com/api'
+const API_URL = 'https://employee-management-api-production-3daa.up.railway.app/api';
 
 function App() {
   const [user, setUser] = useState<User | null>(() => {
@@ -2286,38 +2288,23 @@ function App() {
                   <label>
                     New Password
                   </label>
-
-                  <input
-                    type="password"
-                    value={
-                      registrationPassword
-                    }
-                    onChange={(e) =>
-                      setRegistrationPassword(
-                        e.target.value,
-                      )
-                    }
-                    placeholder="Enter password"
-                    required
-                  />
+<PasswordInput
+  value={registrationPassword}
+  onChange={setRegistrationPassword}
+  placeholder="Enter password"
+  required
+/>
 
                   <label>
                     Confirm Password
                   </label>
 
-                  <input
-                    type="password"
-                    value={
-                      registrationConfirmPassword
-                    }
-                    onChange={(e) =>
-                      setRegistrationConfirmPassword(
-                        e.target.value,
-                      )
-                    }
-                    placeholder="Confirm password"
-                    required
-                  />
+                  <PasswordInput
+  value={registrationConfirmPassword}
+  onChange={setRegistrationConfirmPassword}
+  placeholder="Confirm password"
+  required
+/>
 
                   {registrationError && (
                     <div className="error-message">
@@ -2396,21 +2383,17 @@ function App() {
                   Password
                 </label>
 
-                <input
-                  type="password"
-                  value={
-                    loginForm.password
-                  }
-                  onChange={(e) =>
-                    setLoginForm({
-                      ...loginForm,
-                      password:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="Enter your password"
-                  required
-                />
+                <PasswordInput
+  value={loginForm.password}
+  onChange={(value) =>
+    setLoginForm({
+      ...loginForm,
+      password: value,
+    })
+  }
+  placeholder="Enter your password"
+  required
+/>
 
                 {loginError && (
                   <div className="error-message">
@@ -2428,11 +2411,59 @@ function App() {
                     ? 'Signing in...'
                     : 'Sign In'}
                 </button>
-              </form>
+            
+</form>
 
-              <div className="login-divider">
-                or
-              </div>
+<button
+  type="button"
+  className="secondary-button full-button"
+  onClick={async () => {
+    try {
+      setLoginError('');
+
+      const response = await fetch(
+        `${API_URL}/guest-login`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+          },
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.token) {
+        setLoginError(
+          data.message || 'Unable to enter view-only mode.',
+        );
+        return;
+      }
+
+      localStorage.setItem('county_token', data.token);
+
+      if (data.user) {
+        localStorage.setItem(
+          'county_user',
+          JSON.stringify(data.user),
+        );
+      }
+
+      window.location.reload();
+    } catch {
+      setLoginError(
+        'Could not connect to the server. Please try again.',
+      );
+    }
+  }}
+  disabled={loginLoading}
+>
+  Continue as User / View
+</button>
+
+<div className="login-divider">
+  or
+</div>
 
               {/* NEW REGISTRATION BUTTON */}
 
@@ -2454,26 +2485,6 @@ function App() {
                 disabled={loginLoading}
               >
                 Create Employee Account
-              </button>
-
-              {/* EXISTING EMPLOYEE VERIFICATION */}
-
-              <button
-                type="button"
-                className="secondary-button full-button"
-                onClick={() => {
-                  setShowEmployeeVerification(
-                    true,
-                  )
-
-                  setLoginError('')
-                  setOtp('')
-                  setOtpSent(false)
-                  setPasswordSetup(false)
-                }}
-                disabled={loginLoading}
-              >
-                First-time Government Employee Verification
               </button>
 
               <div className="login-info">
@@ -2621,20 +2632,12 @@ function App() {
                     Confirm Password
                   </label>
 
-                  <input
-                    type="password"
-                    value={
-                      confirmPassword
-                    }
-                    onChange={(e) =>
-                      setConfirmPassword(
-                        e.target.value,
-                      )
-                    }
-                    placeholder="Confirm password"
-                    required
-                  />
-
+                  <PasswordInput
+  value={confirmPassword}
+  onChange={setConfirmPassword}
+  placeholder="Confirm password"
+  required
+/>
                   {passwordError && (
                     <div className="error-message">
                       {passwordError}
